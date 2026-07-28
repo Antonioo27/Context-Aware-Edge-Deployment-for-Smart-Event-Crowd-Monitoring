@@ -1,0 +1,43 @@
+# --- Ambiente virtuale ---
+.venv/
+venv/
+env/
+
+# --- Byte-compiled / cache Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- Distribuzione / packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Output del simulatore (rigenerabili, non vanno versionati) ---
+ground_truth.csv
+crowd_lines.png
+crowd_bars.gif
+*.gif
+
+# --- Test / coverage / type-check ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- IDE ed editor ---
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Sistema operativo ---
+.DS_Store
+Thumbs.db
+
+# --- Segreti / ambiente locale ---
+.env
+*.local
