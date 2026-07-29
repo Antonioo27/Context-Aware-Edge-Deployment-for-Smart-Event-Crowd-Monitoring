@@ -56,26 +56,16 @@ class PopulationModel:
 
     def apply_saturation(self, base_matrix: np.ndarray):
         """
-        Prendiamo la matrice di transizione e la correggiamo tenendo conto di quanto sono già piene le aree
-        il fattore di saturazione è quanto spazio libero è rimasto nell'area di destinazione.
-        Quindi se con la matrice base un utente preferisce spostarsi nel palco, se questo è pieno, magari va all'uscita
+        Il flusso i -> j viene scalato della capacità residua di j. La massa che non riesce
+        a muoversi resta nella propria area. La matrice risultante è stocastica.
         """
         occ = self.occupancy_vector()
-        repulsion = np.maximum(0.0, 1.0 - occ)
+        accept = np.clip(1.0 - occ, 0.0, 1.0)
 
-        # Moltiplichiamo ogni colonna della matrice per il fattore di repulsione
-        weighted = base_matrix * repulsion[np.newaxis, :]
-
-        # Normalizziamo la matrice per conservare le probabilità in modo che la somma faccia 1
-        n_areas = base_matrix.shape[0]
-        row_sums  = weighted.sum(axis=1)
-        out = np.zeros_like(weighted)
-        for i in range(n_areas):
-            if row_sums[i] > 0.0:
-                out[i, :] = weighted[i, :] / row_sums[i]
-            else:
-                # Se la riga è tutta zero, rimaniamo nell'area corrente
-                out[i, i] = 1.0
+        out = base_matrix * accept[np.newaxis, :]
+        np.fill_diagonal(out, 0.0)  # Non restare nella stessa area
+        np.fill_diagonal(out, 1.0 - out.sum(axis=1))
+     
         return out
 
     def step(self, transition_matrix: np.ndarray) -> None:

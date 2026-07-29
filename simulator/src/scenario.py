@@ -145,7 +145,7 @@ class Scenario:
             ("corridor", "stage", 1.5),
             ("stand", "corridor", 1.0),
             ("food",  "corridor", 1.0),
-        ), stay_by_area={"outside": 0.90, "corridor": 0.55})
+        ), stay_by_area={"outside": 0.90, "corridor": 0.55, "entrance": 0.60})
 
 
         # Concerto: tutti convergono al palco, che trattiene e si riempie.
@@ -154,14 +154,14 @@ class Scenario:
             ("stand", "corridor", 1.0),
             ("food",  "corridor", 1.0),
             ("corridor", "stage", 1.0),    # il corridoio incanala verso il palco
-        ), stay_by_area={"corridor": 0.40})    # nessun flusso da stage -> si riempie
+        ), stay_by_area={"corridor": 0.40, "entrance": 0.60})    # nessun flusso da stage -> si riempie
 
         # Deflusso: il palco si svuota, la gente si ridistribuisce.
         deflusso = cls.build_matrix(area_ids, stay_prob=0.98, flows=flows(
             ("stage", "corridor", 1.0),
             ("corridor", "food",  1.5),
             ("corridor", "stand", 1.0),
-        ), stay_by_area={"corridor": 0.50, "stage": 0.95})
+        ), stay_by_area={"corridor": 0.50, "stage": 0.95, "entrance": 0.60})
 
         # Uscita: tutti verso l'uscita via corridoio. exit trattiene -> crush.
         uscita = cls.build_matrix(area_ids, stay_prob=0.98, flows=flows(
@@ -172,7 +172,7 @@ class Scenario:
             ("corridor", "exit", 1.0),
             ("exit", "outside", 1.0),       # <- scarico verso il serbatoio
         ), stay_by_area={"corridor": 0.50, "stage": 0.92,
-                         "stand": 0.95, "food": 0.95, "exit": 0.85})
+                         "stand": 0.95, "food": 0.95, "exit": 0.50, "entrance": 0.60})
 
         phases = [
             Phase("arrivo",   0.0,   150.0, arrivo),
