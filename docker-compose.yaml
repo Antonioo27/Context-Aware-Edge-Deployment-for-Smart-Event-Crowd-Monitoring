@@ -1,0 +1,21 @@
+# Broker MQTT per lo sviluppo locale.
+# In cluster il broker sara' un Deployment su un nodo edge: questo compose
+# serve solo a lavorare senza minikube acceso.
+
+services:
+  broker:
+    image: eclipse-mosquitto:2
+    container_name: evento-broker
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./deploy/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      # Volume nominato e non bind mount: l'immagine gira come utente
+      # "mosquitto" (uid 1883) e su una cartella dell'host creata da root
+      # non avrebbe i permessi di scrittura, quindi la persistenza
+      # fallirebbe in silenzio.
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
