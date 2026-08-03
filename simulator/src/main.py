@@ -12,7 +12,7 @@ def _env_bool(name: str, default: bool):
     val = os.getenv(name)
     if val is None:
         return default
-    val = val.strip().lower() in {"1", "true", "yes", "on"}
+    return val.strip().lower() in {"1", "true", "yes", "on"}
 
 def main():
     """
@@ -41,7 +41,11 @@ def main():
         config.n_people, len(config.areas), config.duration_seconds,
         config.seed, config.expected_total_probe_rate(),
     )
-
+    logger.info(
+        "MQTT: %s:%d, client_id=%s, qos=%d, clean_session=%s, prefisso topic=%s",
+        config.mqtt_host, config.mqtt_port, config.mqtt_client_id,
+        config.mqtt_qos, config.mqtt_clean_session, config.mqtt_topic_prefix,
+    )
     try:
         if control is not None:
             control.start()
@@ -53,13 +57,21 @@ def main():
         _log_summary(engine)
 
 def _log_summary(engine: SimulationEngine) -> None:
-    """Riepilogo finale: contatori del gateway e file prodotto."""
-    stats = engine.gateway.stats
+    """Riepilogo finale: contatori del publisher MQTT e file prodotto."""
+    s = engine.publisher.snapshot_stats()
     logger.info(
-        "fine. probe inviati=%d, falliti=%d, scartati=%d | ground truth: %s",
-        stats["sent"], stats["failed"], stats["dropped"],
-        engine.config.ground_truth_path,
+        "fine. probe: pubblicati=%d, rimessi in coda=%d, scartati=%d, area ignota=%d",
+        s["probes_published"], s["probes_requeued"],
+        s["probes_dropped"], s["probes_unknown_area"],
     )
+    logger.info(
+        "batch: pubblicati=%d, confermati dal broker=%d, in volo=%d | riconnessioni=%d",
+        s["batches_published"], s["batches_acked"],
+        s["batches_in_flight"], s["reconnects"],
+    )
+    if s["buffered"]:
+        logger.warning("probe rimasti in buffer alla chiusura: %s", s["buffered"])
+    logger.info("ground truth: %s", engine.config.ground_truth_path)
 
         
 if __name__ == "__main__":

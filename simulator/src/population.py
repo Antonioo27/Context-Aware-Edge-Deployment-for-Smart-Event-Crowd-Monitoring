@@ -60,11 +60,12 @@ class PopulationModel:
         a muoversi resta nella propria area. La matrice risultante è stocastica.
         """
         occ = self.occupancy_vector()
+        # array che indica la percentuale di persone che possono entrare in ogni area
         accept = np.clip(1.0 - occ, 0.0, 1.0)
 
         out = base_matrix * accept[np.newaxis, :]
-        np.fill_diagonal(out, 0.0)  # Non restare nella stessa area
-        np.fill_diagonal(out, 1.0 - out.sum(axis=1))
+        np.fill_diagonal(out, 0.0)  # Azzero i numeri sulla diagonale perchè sono sporchi
+        np.fill_diagonal(out, 1.0 - out.sum(axis=1)) # Rimettiamo sulla diagonale ciò che avanza per fare somma = 1
      
         return out
 

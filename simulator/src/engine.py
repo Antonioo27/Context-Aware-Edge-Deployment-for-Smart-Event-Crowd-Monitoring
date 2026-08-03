@@ -2,12 +2,13 @@
 Loop principale
 
 Ad ogni tick chiede a Scenario la matrice P(t), la passa a PopulationModel per muovere i device, chiede
-a ProbeEmitter gli eventi dovuti, li consegna al GatewayClient e registra la ground truth.
+a ProbeEmitter gli eventi dovuti, li consegna al broker e registra la ground truth.
 
 Espone anche gli agganci per gli interventi manuali
 """
 
 
+from datetime import datetime, timezone
 import random
 import threading
 import time
@@ -18,7 +19,11 @@ from .groundtruth import GroundTruthRecorder
 from .models import Area, Device
 from .population import PopulationModel
 from .scenario import Scenario
-from .transport import GatewayClient
+from .transport import ProbePublisher
+import logging
+
+logger = logging.getLogger("simulator.engine")
+
 class SimulationEngine:
     """
     Orchestratore della simulazione
@@ -41,7 +46,7 @@ class SimulationEngine:
         self.scenario = Scenario.default_fiera(self.area_ids)
         self.population = PopulationModel(self.areas, self.devices, self.rng)
         self.emitter = ProbeEmitter(config, self.rng)
-        self.gateway = GatewayClient(config)
+        self.publisher = ProbePublisher(config)
         self.ground_truth = GroundTruthRecorder(config, self.area_ids)
 
         # Interventi manuali (mutati dal control server, altro thread).
@@ -74,9 +79,12 @@ class SimulationEngine:
         Esegue il loop fino a duration_seconds, rispettando tempo reale
         e chiamando tick() ad ogni passo
         """
-        self.setup()
         tick = self.config.tick_seconds
+        self.publisher.start()
+        self.setup()
+
         start = time.monotonic()
+        self.t0_wall = datetime.now(timezone.utc)
         t = 0.0
         try:
             while t < self.config.duration_seconds and not self._stop.is_set():
@@ -87,6 +95,10 @@ class SimulationEngine:
                 lag = target - time.monotonic()
                 if lag > 0:
                     self._stop.wait(lag)
+                elif lag < -tick:
+                    # Il tick ha sforato di piu' di un intero passo: il
+                    # simulatore non sta piu' al passo col tempo reale.
+                    logger.warning("tick t=%.0fs in ritardo di %.2fs", t, -lag)
         finally:
             self.teardown()
 
@@ -96,10 +108,11 @@ class SimulationEngine:
         1. P(t) = scenario.matricx_at(t) + saturazione
         2. population.step(P(t))
         3. events = emitter.emit_due(devices, t) (+ boost attivi)
-        4. gateway.enqueue(events)
+        4. publisher.enqueue(events)
         5. ground_truth.record(t, areas)
         """
         with self._lock:
+            self._boosts = {a: b for a, b in self._boosts.items() if t < b["until"]}
             boosts = {a: b.copy() for a, b in self._boosts.items()}
             killed = set(self._killed)
 
@@ -112,15 +125,26 @@ class SimulationEngine:
             if killed:
                 events = [e for e in events if e.sensor_id not in killed]
 
-            self.gateway.enqueue(events)
-            self.gateway.flush_if_due(t)
             self.ground_truth.record(t, self.areas)
 
+        self.publisher.enqueue(events, t)
+        self.publisher.flush_if_due(t)
+
+        # Diagnostica periodica: senza questa, un broker irraggiungibile
+        # e' invisibile e ti accorgi a fine run che non e' arrivato nulla.
+        if int(t) % 30 == 0 and t > 0:
+            s = self.publisher.snapshot_stats()
+            if not s["connected"] or s["buffered"]:
+                logger.warning(
+                    "t=%.0fs broker connesso=%s, in buffer=%s, scartati=%d",
+                    t, s["connected"], s["buffered"], s["probes_dropped"],
+                )
+        
     def teardown(self):
         """
-        Flush finale del gateway e chiusura dei file.
+        Flush finale del publisher e chiusura dei file.
         """
-        self.gateway.close()
+        self.publisher.close()
         self.ground_truth.close()
 
     def stop(self) -> None:
@@ -172,10 +196,6 @@ class SimulationEngine:
         self._t = t  # memorizza per _now (usato da apply_boost)
         extra = []
         for area_id, b in boosts.items():
-            if t >= b["until"]:
-                with self._lock:
-                    self._boosts.pop(area_id, None)
-                continue
             surplus = b["factor"] - 1.0
             for d in self.population.devices_in_area(area_id):
                 # parte intera garantita + parte frazionaria probabilistica

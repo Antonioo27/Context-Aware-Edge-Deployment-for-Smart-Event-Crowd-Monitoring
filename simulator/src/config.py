@@ -67,8 +67,16 @@ class SimConfig:
     # Determinismo
     seed: int = 42
 
-    # --- Trasporto ---
-    gateway_url: str = "http://gateway/api/v1/probes"
+    # --- Trasporto MQTT ---
+    mqtt_host: str = "localhost"
+    mqtt_port: int = 1883
+    mqtt_keepalive: int = 30
+
+    mqtt_client_id: str = "sim-probe-publisher"
+    mqtt_qos: int = 1
+    mqtt_clean_session: bool = False
+    mqtt_topic_prefix: str = "event"
+
     batch_max_events: int = 50
     batch_max_seconds: float = 1.0
 
@@ -101,7 +109,13 @@ class SimConfig:
 
         cfg.seed = _env_int("SIM_SEED", cfg.seed)
  
-        cfg.gateway_url = os.getenv("SIM_GATEWAY_URL", cfg.gateway_url)
+        cfg.mqtt_host = os.getenv("SIM_MQTT_HOST", cfg.mqtt_host)
+        cfg.mqtt_port = _env_int("SIM_MQTT_PORT", cfg.mqtt_port)
+        cfg.mqtt_keepalive = _env_int("SIM_MQTT_KEEPALIVE", cfg.mqtt_keepalive)
+        cfg.mqtt_client_id = os.getenv("SIM_MQTT_CLIENT_ID", cfg.mqtt_client_id)
+        cfg.mqtt_qos = _env_int("SIM_MQTT_QOS", cfg.mqtt_qos)
+        cfg.mqtt_clean_session = _env_bool("SIM_MQTT_CLEAN_SESSION", cfg.mqtt_clean_session)
+        cfg.mqtt_topic_prefix = os.getenv("SIM_MQTT_TOPIC_PREFIX", cfg.mqtt_topic_prefix)
         cfg.batch_max_events = _env_int("SIM_BATCH_MAX_EVENTS", cfg.batch_max_events)
         cfg.batch_max_seconds = _env_float("SIM_BATCH_MAX_SECONDS", cfg.batch_max_seconds)
  
@@ -130,6 +144,24 @@ class SimConfig:
 
         if not self.areas:
             raise ValueError("serve almeno un'area")
+
+        if self.mqtt_qos not in (0, 1, 2):
+            raise ValueError("mqtt_qos deve essere 0, 1 o 2")
+
+        if not (1 <= self.mqtt_port <= 65535):
+            raise ValueError("mqtt_port fuori range")
+
+        if not self.mqtt_client_id and not self.mqtt_clean_session:
+            raise ValueError("client_id vuoto ammesso solo con clean_session=True")
+
+        p = self.mqtt_topic_prefix
+        if not p or p.startswith("/") or p.endswith("/") or "+" in p or "#" in p:
+            raise ValueError("mqtt_topic_prefix non valido")
+
+        # Gli area_id finiscono nel topic: niente separatori ne' wildcard.
+        for a in self.areas:
+            if any(c in a.area_id for c in ("/", "+", "#")):
+                raise ValueError(f"area_id non valido per un topic MQTT: {a.area_id}")
 
         ids = [a.area_id for a in self.areas]
 
