@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-config
+  namespace: default
+data:
+  mosquitto.conf: |
+    listener 1883
+    allow_anonymous true
+    persistence true
+    persistence_location /mosquitto/data/
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto-broker
+  namespace: default
+  labels:
+    app: mosquitto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto
+  template:
+    metadata:
+      labels:
+        app: mosquitto
+    spec:
+      containers:
+      - name: mosquitto
+        image: eclipse-mosquitto:2
+        ports:
+        - containerPort: 1883
+        volumeMounts:
+        - name: config-volume
+          mountPath: /mosquitto/config/mosquitto.conf
+          subPath: mosquitto.conf
+        - name: data-volume
+          mountPath: /mosquitto/data
+      volumes:
+      - name: config-volume
+        configMap:
+          name: mosquitto-config
+      - name: data-volume
+        emptyDir: {} # Per test locali, i dati andranno persi al riavvio del pod. Per produzione si usa un PersistentVolumeClaim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-svc
+  namespace: default
+spec:
+  selector:
+    app: mosquitto
+  ports:
+  - protocol: TCP
+    port: 1883
+    targetPort: 1883

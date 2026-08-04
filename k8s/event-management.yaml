@@ -1,0 +1,82 @@
+# 1. Definizione del ServiceAccount per EventManagement
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: event-management-sa
+  namespace: default
+---
+# 2. Definizione del Role per gestire i Deployment
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployment-manager
+  namespace: default
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# 3. Binding del Role al ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployment-manager-binding
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: event-management-sa
+  namespace: default
+roleRef:
+  kind: Role
+  name: deployment-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+# 4. Deployment di EventManagement
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-management
+  namespace: default
+  labels:
+    app: event-management
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-management
+  template:
+    metadata:
+      labels:
+        app: event-management
+    spec:
+      serviceAccountName: event-management-sa 
+      containers:
+      - name: event-management
+        image: event-management:latest
+        imagePullPolicy: Never 
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:postgresql://postgis-svc:5432/event_management"
+        - name: MQTT_BROKER_URL
+          value: "tcp://mosquitto-svc:1883"
+---
+# 5. Service per contattare l'API di EventManagement da fuori o da altri pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-management-svc
+  namespace: default
+spec:
+  type: NodePort # Permette l'accesso da fuori (es. Postman) su Minikube
+  selector:
+    app: event-management
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+    nodePort: 30080
