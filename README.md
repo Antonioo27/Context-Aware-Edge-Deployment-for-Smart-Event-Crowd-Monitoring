@@ -185,7 +185,7 @@ minikube service event-management-svc
 *(Minikube aprirà automaticamente una pagina del browser o stamperà un URL del tipo `http://127.0.0.1:XXXXX` da cui potrai richiamare gli endpoint REST, ad es. su Postman)*
 
 **Esponi il Broker MQTT (per il simulatore):**
-Se il simulatore di sensori python gira sul tuo Mac e non dentro K8s, necessita di parlare con Mosquitto. Usa il port-forwarding:
+Se il simulatore di sensori python gira sul tuo PC e non dentro K8s, necessita di parlare con Mosquitto. Usa il port-forwarding (sarà da cambiare con una configurazione più solida):
 ```bash
 kubectl port-forward svc/mosquitto-svc 1883:1883
 ```

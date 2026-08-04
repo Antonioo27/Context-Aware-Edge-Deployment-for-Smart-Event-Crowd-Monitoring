@@ -1,10 +1,13 @@
 package it.unibo.cas.eventanalysis.models.entities;
 
-import java.util.Date;
+import java.time.OffsetDateTime;
 
-public class Probe {
-    private String sensor_id;
-    private Date ts;
-    private String Mac;
-    private int rssi;
-}
+/**
+ * A single WiFi probe.
+ */
+public record Probe(
+        String sensorId,
+        OffsetDateTime ts,
+        String mac,
+        int rssi
+) {}

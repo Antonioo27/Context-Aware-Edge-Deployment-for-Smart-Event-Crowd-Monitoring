@@ -21,3 +21,5 @@ spec:
         env:
         - name: AREA_ID
           value: "[AREA_ID]"
+        - name: MQTT_HOST
+          value: "mosquitto-svc"

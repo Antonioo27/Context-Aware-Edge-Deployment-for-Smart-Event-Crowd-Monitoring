@@ -26,6 +26,7 @@ public class AreaService {
                 .name(areaDTO.getName())
                 .boundary(areaDTO.getBoundary())
                 .capacity(areaDTO.getCapacity())
+                .priority(areaDTO.getPriority())
                 .build();
         Event event = eventService.getEvent();
         event.addArea(area);
