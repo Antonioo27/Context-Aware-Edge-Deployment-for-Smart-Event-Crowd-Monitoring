@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-analysis-[K8S_AREA_ID]
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-analysis
+      area: [K8S_AREA_ID]
+  template:
+    metadata:
+      labels:
+        app: event-analysis
+        area: [K8S_AREA_ID]
+    spec:
+      containers:
+      - name: analysis
+        image: event-analysis:latest
+        imagePullPolicy: Never
+        env:
+        - name: AREA_ID
+          value: "[AREA_ID]"

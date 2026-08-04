@@ -129,3 +129,70 @@ misurare la latenza di trasporto contro il proprio orologio. `batch_id` e'
 progressivo **per area**, cosi' un buco nella sequenza rende quantificabile la
 perdita.
 
+---
+
+## Guida all'Avvio su Kubernetes (Minikube a 4 Nodi)
+
+L'infrastruttura è progettata per essere eseguita in un ambiente distribuito. Puoi emulare questo comportamento in locale sfruttando Minikube configurato in modalità multi-nodo.
+
+### 1. Inizializzazione del Cluster
+Avvia Minikube richiedendo esplicitamente la creazione di 4 nodi virtuali:
+```bash
+minikube start --nodes 4
+```
+*(Puoi verificare lo stato dei nodi lanciando `kubectl get nodes`)*
+
+### 2. Configurazione dell'ambiente Docker
+Poiché abbiamo impostato l'`imagePullPolicy: Never` nei manifest, dobbiamo compilare le immagini Docker *direttamente* all'interno del demone Docker di Minikube, altrimenti i nodi non troveranno le immagini.
+```bash
+eval $(minikube docker-env)
+```
+
+### 3. Build delle Immagini Locali
+Mantenendo attivo il terminale precedente, procedi con la compilazione e la build delle immagini per entrambi i microservizi:
+
+**Event Management (Backend & Orchestratore):**
+```bash
+cd eventManagement
+./gradlew bootJar
+docker build -t event-management:latest .
+cd ..
+```
+
+**Event Analysis (Edge Worker):**
+```bash
+cd eventAnalysis
+./gradlew bootJar
+docker build -t event-analysis:latest .
+cd ..
+```
+
+### 4. Deploy dell'Infrastruttura di Base
+L'applicazione di Analisi verrà creata dinamicamente. Noi dobbiamo far partire unicamente il Database (PostGIS), il broker messaggi (Mosquitto) e l'orchestratore (Event Management):
+```bash
+kubectl apply -f k8s/postgis.yaml
+kubectl apply -f k8s/mosquitto.yaml
+kubectl apply -f k8s/event-management.yaml
+```
+
+### 5. Accesso e Test
+Una volta che i pod sono in stato `Running`, possiamo esporre le porte per testare il sistema dal nostro computer host:
+
+**Esponi l'API di backend:**
+```bash
+minikube service event-management-svc
+```
+*(Minikube aprirà automaticamente una pagina del browser o stamperà un URL del tipo `http://127.0.0.1:XXXXX` da cui potrai richiamare gli endpoint REST, ad es. su Postman)*
+
+**Esponi il Broker MQTT (per il simulatore):**
+Se il simulatore di sensori python gira sul tuo Mac e non dentro K8s, necessita di parlare con Mosquitto. Usa il port-forwarding:
+```bash
+kubectl port-forward svc/mosquitto-svc 1883:1883
+```
+Ora il simulatore potrà inviare i dati a `localhost:1883`.
+
+### (Utility) Aggiornare il codice
+Se modifichi il codice Java, ripeti il punto 3 per il servizio interessato e poi forza il riavvio del pod:
+```bash
+kubectl delete pod -l app=event-management
+```

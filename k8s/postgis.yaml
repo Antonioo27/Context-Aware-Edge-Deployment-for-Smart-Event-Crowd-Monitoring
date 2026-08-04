@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgis-db
+  namespace: default
+  labels:
+    app: postgis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgis
+  template:
+    metadata:
+      labels:
+        app: postgis
+    spec:
+      containers:
+      - name: postgis
+        image: postgis/postgis:15-3.4 # Usa una versione stabile recente
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "event_management"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "postgres"
+        # Per un db di produzione andrebbe aggiunto un volume persistente (PVC)
+        # qui omettiamo il mount per mantenere il file semplice per il test
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgis-svc
+  namespace: default
+spec:
+  selector:
+    app: postgis
+  ports:
+  - protocol: TCP
+    port: 5432
+    targetPort: 5432

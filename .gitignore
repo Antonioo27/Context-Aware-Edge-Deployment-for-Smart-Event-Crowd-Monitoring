@@ -38,6 +38,12 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# --- Segreti / ambiente locale ---
+# --- Secrets / ambiente locale ---
 .env
 *.local
+
+# --- Traccia Progetto ---
+Smart Event Crowd Monitoring.md
+
+# --- Comandi k8s ---
+k8s_commands.md
