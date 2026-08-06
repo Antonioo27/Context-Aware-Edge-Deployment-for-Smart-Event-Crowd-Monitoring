@@ -1,70 +1,52 @@
 package it.unibo.cas.eventanalysis.service;
 
-import it.unibo.cas.eventanalysis.config.AnalysisProperties;
-import it.unibo.cas.eventanalysis.messaging.ProbeSubscriber;
+import it.unibo.cas.eventanalysis.models.entities.Area;
+import it.unibo.cas.eventanalysis.models.entities.Probe;
 import it.unibo.cas.eventanalysis.models.entities.ProbeBatch;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
-/**
- * Entry point of the analysis service. For now: connects to the broker
- * and consumes batches. Windowing and analysis will be injected in this loop.
- */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class AnalysisService {
+    @Value("${eventanalysis.analysis.windows-size:60}")
+    private int windowSize;
 
-    private final AnalysisProperties config;
-    private final ProbeSubscriber subscriber;
+    @Value("${eventanalysis.analysis.mean-exp-int:25}")
+    private int mean;
 
-    private static final double STATS_INTERVAL_S = 30.0;
+    @Autowired
+    private Area area;
 
-    @EventListener(ApplicationReadyEvent.class)
-    public void startAnalysisLoop() {
-        // Start in a separate thread to not block Spring Boot startup
-        Thread analysisThread = new Thread(this::runLoop, "AnalysisLoopThread");
-        analysisThread.start();
+    public int countNumDifferentMac(List<ProbeBatch> probeBatches) {
+        HashMap<String, Probe> probeList = new HashMap<>();
+        for (ProbeBatch probeBatch : probeBatches) {
+            for (Probe probe : probeBatch.getProbes())
+                if (!probeList.containsKey(probe.mac()))
+                    probeList.put(probe.mac(), probe);
+        }
+        return probeList.size();
     }
 
-    private void runLoop() {
-        log.info("Starting analysis area={} | broker {}:{} | topic={}",
-                config.areaId(), config.mqttHost(), config.mqttPort(), config.topicProbes());
-
-        subscriber.start();
-
-        if (!subscriber.waitConnected(15, TimeUnit.SECONDS)) {
-            log.warn("Broker unreachable: will keep trying in background");
-        }
-
-        long nextStats = System.nanoTime() + (long) (STATS_INTERVAL_S * 1_000_000_000L);
-
-        while (!subscriber.isStopping() && !Thread.currentThread().isInterrupted()) {
-            ProbeBatch batch = subscriber.get(1, TimeUnit.SECONDS);
-
-            if (batch != null) {
-                log.info("batch={} probes={} (declared {}, malformed {}) latency={} ms",
-                        batch.getBatchId(), batch.getCountEffective(), batch.getCountDeclared(),
-                        batch.getMalformedProbes(),
-                        String.format(java.util.Locale.US, "%.1f", batch.getTransportLatencyMs()));
-
-                subscriber.ack(batch);
-            }
-
-            long now = System.nanoTime();
-            if (now >= nextStats) {
-                log.info("transport: {}", subscriber.getStatsSnapshot());
-                nextStats = now + (long) (STATS_INTERVAL_S * 1_000_000_000L);
-            }
-        }
-
-        log.info("Final summary: {}", subscriber.getStatsSnapshot());
-
-        // TODO: Add some analysis logic
+    public long estimatePeople(List<ProbeBatch> probeBatches){
+        return Math.round(
+                        countNumDifferentMac(probeBatches) / (1 - Math.exp(((double) -windowSize / mean))));
     }
+
+    public double density(long estimatedPeople) {
+        return estimatedPeople / area.m2();
+    }
+
+    public double density(List<ProbeBatch> probeBatches) {
+        return estimatePeople(probeBatches) / area.m2();
+    }
+
+    public void trend(){
+        // TODO
+    }
+
 }

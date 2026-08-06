@@ -29,7 +29,7 @@ public class KubernetesOrchestrationService {
         String sanitizedAreaId = getSanitizedId(area_name);
 
         String finalYaml = template.replace("[K8S_AREA_ID]", sanitizedAreaId)
-                                   .replace("[AREA_ID]", area_name);
+                .replace("[AREA_ID]", area_name);
 
         InputStream inputStream = new ByteArrayInputStream(finalYaml.getBytes());
         client.load(inputStream).serverSideApply();

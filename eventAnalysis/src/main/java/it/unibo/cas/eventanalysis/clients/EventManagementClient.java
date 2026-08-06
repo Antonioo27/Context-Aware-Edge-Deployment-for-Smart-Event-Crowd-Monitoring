@@ -30,4 +30,20 @@ public class EventManagementClient {
                     e);
         }
     }
+
+    public double getM2(String area_id) {
+        String url = eventManagementApiUrl + "/api/event/area/" + area_id + "/m2";
+        try {
+            ResponseEntity<Integer> response = restTemplate.getForEntity(url, Integer.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                throw new RuntimeException(
+                        "Error occurs while try retrive information: " + response.getStatusCode());
+            }
+            return response.getBody();
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error occurs while try to comunicate with EventManagement: " + e.getMessage(),
+                    e);
+        }
+    }
 }

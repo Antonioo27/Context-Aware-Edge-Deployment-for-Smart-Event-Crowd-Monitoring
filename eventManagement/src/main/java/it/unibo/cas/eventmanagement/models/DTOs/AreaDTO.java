@@ -1,5 +1,6 @@
 package it.unibo.cas.eventmanagement.models.DTOs;
 
+import it.unibo.cas.eventmanagement.models.enums.AreaType;
 import it.unibo.cas.eventmanagement.models.enums.Priority;
 import it.unibo.cas.eventmanagement.utils.PolygonDeserializer;
 import it.unibo.cas.eventmanagement.utils.PolygonSerializer;
@@ -20,6 +21,7 @@ public class AreaDTO {
     private String name;
     private int capacity;
     private Priority priority;
+    private AreaType type;
     
     @JsonSerialize(using = PolygonSerializer.class)
     @JsonDeserialize(using = PolygonDeserializer.class)

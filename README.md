@@ -174,6 +174,11 @@ kubectl apply -f k8s/mosquitto.yaml
 kubectl apply -f k8s/event-management.yaml
 ```
 
+Per far in modo che k8s legga il file .env:
+```bash
+kubectl create configmap event-analysis-config --from-env-file=eventAnalysis/.env
+```
+
 ### 5. Accesso e Test
 Una volta che i pod sono in stato `Running`, possiamo esporre le porte per testare il sistema dal nostro computer host:
 

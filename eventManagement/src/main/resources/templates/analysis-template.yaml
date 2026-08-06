@@ -23,3 +23,21 @@ spec:
           value: "[AREA_ID]"
         - name: MQTT_HOST
           value: "mosquitto-svc"
+        - name: EVENTANALYSIS_PROBE_THRESHOLD_RSSI
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_PROBE_THRESHOLD_RSSI
+              optional: true
+        - name: EVENTANALYSIS_ANALYSIS_WINDOWS_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_WINDOWS_SIZE
+              optional: true
+        - name: EVENTANALYSIS_ANALYSIS_MEAN_EXP_INT
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_MEAN
+              optional: true

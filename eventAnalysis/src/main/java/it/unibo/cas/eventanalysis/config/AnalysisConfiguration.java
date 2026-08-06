@@ -2,6 +2,7 @@ package it.unibo.cas.eventanalysis.config;
 
 import it.unibo.cas.eventanalysis.clients.EventManagementClient;
 import it.unibo.cas.eventanalysis.models.entities.Area;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -22,7 +23,8 @@ public class AnalysisConfiguration {
     public Area currentArea(EventManagementClient eventManagementClient, AnalysisProperties properties) {
         // call the backend to retrieve area capacity
         int capacity = eventManagementClient.getAreaCapacity(properties.areaId());
-        Area area = new Area(properties.areaId(), capacity);
+        double m2 = eventManagementClient.getM2(properties.areaId());
+        Area area = new Area(properties.areaId(), capacity, m2);
         log.info("EventAnalysisApplication initialization - area: [{}]", area.id());
         return area;
     }
@@ -36,4 +38,5 @@ public class AnalysisConfiguration {
         mapper.registerModule(new JavaTimeModule()); // Support for OffsetDateTime
         return mapper;
     }
+
 }

@@ -26,6 +26,7 @@ public class AreaService {
                 .name(areaDTO.getName())
                 .boundary(areaDTO.getBoundary())
                 .capacity(areaDTO.getCapacity())
+                .type(areaDTO.getType())
                 .priority(areaDTO.getPriority())
                 .build();
         Event event = eventService.getEvent();
@@ -40,7 +41,7 @@ public class AreaService {
 
     public void deleteArea(String areaName) {
         Area area = areaRepository.getAreaByName(areaName);
-        areaRepository.delete(area);
+        deleteArea(area);
     }
 
     public void deleteArea(Area area) {
@@ -49,5 +50,11 @@ public class AreaService {
 
     public Area getArea(String areaName) {
         return areaRepository.getAreaByName(areaName);
+    }
+
+    public Double getM2(String areaId) {
+        // TODO calcolare l'area tramite postgis.
+        Area area = getArea(areaId);
+        return 0.0;
     }
 }

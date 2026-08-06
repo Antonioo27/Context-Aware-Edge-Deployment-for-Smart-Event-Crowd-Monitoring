@@ -58,6 +58,19 @@ public class AreaController {
         }
     }
 
+    @GetMapping("area/{areaId}/m2")
+    public ResponseEntity<Double> getM2(@PathVariable String areaId) {
+        if (areaId == null) {
+            logger.error("areaId is null");
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            return ResponseEntity.ok(areaService.getM2(areaId));
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @PutMapping("area/{areaId}")
     public ResponseEntity<String> updateArea(@PathVariable Long areaId, @RequestBody AreaDTO areaDTO) {
         // TODO

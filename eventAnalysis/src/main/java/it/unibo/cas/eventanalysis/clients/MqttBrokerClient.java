@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MqttBrokerClient implements MqttCallbackExtended {
 
     private final AnalysisProperties config;
-    private MqttAsyncClient client;
+    private final MqttAsyncClient client;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean stopping = new AtomicBoolean(false);
 
