@@ -1,6 +1,7 @@
 
 import os
 from dataclasses import dataclass, field
+import requests
 
 @dataclass
 class AreaConfig:
@@ -27,6 +28,29 @@ def default_fiera_areas():
         AreaConfig(area_id="corridor", sensor_id="ap-corridor-01", capacity=600),
         AreaConfig(area_id="exit", sensor_id="ap-exit-01", capacity=400),
     ]
+
+def fetch_dynamic_areas(backend_url: str):
+    try:
+        response = requests.get(f"{backend_url}/api/event", timeout=5)
+        response.raise_for_status()
+        event_data = response.json()
+        
+        dynamic_areas = [
+            AreaConfig(
+                area_id=area["name"].lower().replace(" ", "_"),
+                sensor_id=f"ap-{area['name'].lower().replace(' ', '_')}-01",
+                capacity=area.get("capacity", 500),
+                monitored=True
+            )
+            for area in event_data.get("areas", [])
+        ]
+    except Exception as e:
+        print(f"[Warning] Impossibile recuperare aree dal backend: {e}. Uso fallback.")
+        return default_fiera_areas()
+
+    # L'area outside serve al modello di Markov ma non risiede nel backend
+    outside = AreaConfig(area_id="outside", sensor_id="", capacity=100_000, monitored=False)
+    return [outside] + dynamic_areas
 
 @dataclass
 class SimConfig:
@@ -80,6 +104,9 @@ class SimConfig:
     batch_max_events: int = 50
     batch_max_seconds: float = 1.0
 
+    # REST Backend URL
+    backend_url: str = "http://localhost:8080"
+
     # --- Ground truth ---
     ground_truth_path: str = "ground_truth.csv"
 
@@ -97,8 +124,11 @@ class SimConfig:
         cfg = cls()
 
         cfg.n_people = _env_int("SIM_N_PEOPLE", cfg.n_people)
+        cfg.backend_url = os.getenv("SIM_BACKEND_URL", cfg.backend_url)          
         cfg.tick_seconds = _env_float("SIM_TICK_SECOND", cfg.tick_seconds)
         cfg.duration_seconds = _env_int("SIM_DURATION_SECONDS", cfg.duration_seconds)
+
+        cfg.areas = fetch_dynamic_areas(cfg.backend_url)
 
         cfg.probe_interval_mean = _env_float("SIM_PROBE_INTERVAL_MEAN", cfg.probe_interval_mean)
         cfg.probe_interval_min = _env_float("SIM_PROBE_INTERVAL_MIN", cfg.probe_interval_min)
