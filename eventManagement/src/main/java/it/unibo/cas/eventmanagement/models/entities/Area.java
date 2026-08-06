@@ -1,5 +1,6 @@
 package it.unibo.cas.eventmanagement.models.entities;
 
+import it.unibo.cas.eventmanagement.models.enums.AreaType;
 import it.unibo.cas.eventmanagement.models.enums.Priority;
 import it.unibo.cas.eventmanagement.models.enums.State;
 import jakarta.persistence.*;
@@ -36,6 +37,10 @@ public class Area {
     @Builder.Default
     @Enumerated(EnumType.STRING)
     private State state = State.NONE;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    private AreaType type = AreaType.GENERIC;
 
     @Column(columnDefinition = "geometry(Polygon,4326)")
     @JsonSerialize(using = PolygonSerializer.class)

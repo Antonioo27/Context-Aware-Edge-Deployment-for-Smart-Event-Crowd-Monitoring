@@ -38,7 +38,7 @@ def simulate(config: SimConfig) -> tuple[list[str], np.ndarray]:
     pop = PopulationModel(areas, devices, rng)
     pop.devices = devices          # come fa engine.setup
     pop.seed_devices()             # tutti in area 0 = outside
-    scenario = Scenario.default_fiera(area_ids)
+    scenario = Scenario.from_dynamic_areas(config.areas)
 
     steps = int(config.duration_seconds / config.tick_seconds)
     history = np.zeros((steps + 1, len(area_ids)))

@@ -43,7 +43,7 @@ class SimulationEngine:
         self.devices: list[Device] = []
 
         # Sottomoduli.
-        self.scenario = Scenario.default_fiera(self.area_ids)
+        self.scenario = Scenario.from_dynamic_areas(config.areas)
         self.population = PopulationModel(self.areas, self.devices, self.rng)
         self.emitter = ProbeEmitter(config, self.rng)
         self.publisher = ProbePublisher(config)

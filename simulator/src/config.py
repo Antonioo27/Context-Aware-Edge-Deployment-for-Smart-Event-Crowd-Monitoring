@@ -12,6 +12,7 @@ class AreaConfig:
     area_id: str
     sensor_id: str
     capacity: int
+    area_type: str = "GENERIC"
     monitored: bool = True
 
 
@@ -20,13 +21,13 @@ def default_fiera_areas():
     Sei aree con ruoli diversi.
     """
     return [
-        AreaConfig(area_id="outside", sensor_id="", capacity=100_000, monitored=False),
-        AreaConfig(area_id="entrance", sensor_id="ap-entrance-01", capacity=400),
-        AreaConfig(area_id="stage", sensor_id="ap-stage-01", capacity=3000),
-        AreaConfig(area_id="food", sensor_id="ap-food-01", capacity=800),
-        AreaConfig(area_id="stand", sensor_id="ap-stand-01", capacity=1200),
-        AreaConfig(area_id="corridor", sensor_id="ap-corridor-01", capacity=600),
-        AreaConfig(area_id="exit", sensor_id="ap-exit-01", capacity=400),
+        AreaConfig(area_id="outside", sensor_id="", capacity=100_000, area_type="OUTSIDE", monitored=False),
+        AreaConfig(area_id="entrance", sensor_id="ap-entrance-01", capacity=800, area_type="ENTRANCE"),
+        AreaConfig(area_id="stage", sensor_id="ap-stage-01", capacity=3000, area_type="PEAK_ATTRACTION"),
+        AreaConfig(area_id="food", sensor_id="ap-food-01", capacity=800, area_type="SUSTAINED_ATTRACTION"),
+        AreaConfig(area_id="stand", sensor_id="ap-stand-01", capacity=1200, area_type="SUSTAINED_ATTRACTION"),
+        AreaConfig(area_id="corridor", sensor_id="ap-corridor-01", capacity=1000, area_type="TRANSIT"),
+        AreaConfig(area_id="exit", sensor_id="ap-exit-01", capacity=800, area_type="EXIT"),
     ]
 
 def fetch_dynamic_areas(backend_url: str):
@@ -40,6 +41,7 @@ def fetch_dynamic_areas(backend_url: str):
                 area_id=area["name"].lower().replace(" ", "_"),
                 sensor_id=f"ap-{area['name'].lower().replace(' ', '_')}-01",
                 capacity=area.get("capacity", 500),
+                area_type=area.get("type", "GENERIC"),
                 monitored=True
             )
             for area in event_data.get("areas", [])
@@ -49,7 +51,7 @@ def fetch_dynamic_areas(backend_url: str):
         return default_fiera_areas()
 
     # L'area outside serve al modello di Markov ma non risiede nel backend
-    outside = AreaConfig(area_id="outside", sensor_id="", capacity=100_000, monitored=False)
+    outside = AreaConfig(area_id="outside", sensor_id="", capacity=100_000, area_type="OUTSIDE", monitored=False)
     return [outside] + dynamic_areas
 
 @dataclass
