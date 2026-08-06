@@ -70,8 +70,7 @@ ma senza persistenza: le sessioni non sopravvivono al riavvio del container.
 Con il broker attivo, da radice del repository:
 
 ```bash
-source .venv/bin/activate
-SIM_DURATION_SECONDS=60 python -m simulator.src.main
+source .venv/bin/activate && SIM_DURATION_SECONDS=120 python -m simulator.src.main
 ```
 
 
@@ -138,7 +137,7 @@ L'infrastruttura è progettata per essere eseguita in un ambiente distribuito. P
 ### 1. Inizializzazione del Cluster
 Avvia Minikube richiedendo esplicitamente la creazione di 4 nodi virtuali:
 ```bash
-minikube start --nodes 4
+minikube start --n 4
 ```
 *(Puoi verificare lo stato dei nodi lanciando `kubectl get nodes`)*
 
@@ -195,4 +194,5 @@ Ora il simulatore potrà inviare i dati a `localhost:1883`.
 Se modifichi il codice Java, ripeti il punto 3 per il servizio interessato e poi forza il riavvio del pod:
 ```bash
 kubectl delete pod -l app=event-management
+kubectl delete pod -l app=event-analysis
 ```
