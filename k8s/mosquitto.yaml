@@ -1,3 +1,6 @@
+# -------------------------------------------------------------
+# ConfigMap condivisa per consentire connessioni anonime (Mosquitto v2.x)
+# -------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,53 +10,195 @@ data:
   mosquitto.conf: |
     listener 1883
     allow_anonymous true
-    persistence true
-    persistence_location /mosquitto/data/
 ---
+# =============================================================
+# 1. BROKER MQTT - NODO CLOUD
+# =============================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mosquitto-broker
+  name: mosquitto-cloud
   namespace: default
-  labels:
-    app: mosquitto
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mosquitto
+      app: mosquitto-cloud
   template:
     metadata:
       labels:
-        app: mosquitto
+        app: mosquitto-cloud
     spec:
+      nodeSelector:
+        node-id: node-cloud
       containers:
       - name: mosquitto
-        image: eclipse-mosquitto:2
+        image: eclipse-mosquitto:2.0
         ports:
         - containerPort: 1883
         volumeMounts:
-        - name: config-volume
+        - name: config
           mountPath: /mosquitto/config/mosquitto.conf
           subPath: mosquitto.conf
-        - name: data-volume
-          mountPath: /mosquitto/data
       volumes:
-      - name: config-volume
+      - name: config
         configMap:
           name: mosquitto-config
-      - name: data-volume
-        emptyDir: {} # Per test locali, i dati andranno persi al riavvio del pod. Per produzione si usa un PersistentVolumeClaim
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: mosquitto-svc
+  name: mosquitto-cloud
   namespace: default
 spec:
+  type: NodePort
   selector:
-    app: mosquitto
+    app: mosquitto-cloud
   ports:
-  - protocol: TCP
-    port: 1883
+  - port: 1883
     targetPort: 1883
+    nodePort: 31883 # Porta esterna accessibile dal Simulatore Python
+---
+# =============================================================
+# 2. BROKER MQTT - NODO EDGE 1
+# =============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto-edge-1
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto-edge-1
+  template:
+    metadata:
+      labels:
+        app: mosquitto-edge-1
+    spec:
+      nodeSelector:
+        node-id: node-edge-1
+      containers:
+      - name: mosquitto
+        image: eclipse-mosquitto:2.0
+        ports:
+        - containerPort: 1883
+        volumeMounts:
+        - name: config
+          mountPath: /mosquitto/config/mosquitto.conf
+          subPath: mosquitto.conf
+      volumes:
+      - name: config
+        configMap:
+          name: mosquitto-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-edge-1
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: mosquitto-edge-1
+  ports:
+  - port: 1883
+    targetPort: 1883
+    nodePort: 31884 # Porta esterna accessibile dal Simulatore Python
+---
+# =============================================================
+# 3. BROKER MQTT - NODO EDGE 2
+# =============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto-edge-2
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto-edge-2
+  template:
+    metadata:
+      labels:
+        app: mosquitto-edge-2
+    spec:
+      nodeSelector:
+        node-id: node-edge-2
+      containers:
+      - name: mosquitto
+        image: eclipse-mosquitto:2.0
+        ports:
+        - containerPort: 1883
+        volumeMounts:
+        - name: config
+          mountPath: /mosquitto/config/mosquitto.conf
+          subPath: mosquitto.conf
+      volumes:
+      - name: config
+        configMap:
+          name: mosquitto-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-edge-2
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: mosquitto-edge-2
+  ports:
+  - port: 1883
+    targetPort: 1883
+    nodePort: 31885 # Porta esterna accessibile dal Simulatore Python
+---
+# =============================================================
+# 4. BROKER MQTT - NODO EDGE 3
+# =============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto-edge-3
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto-edge-3
+  template:
+    metadata:
+      labels:
+        app: mosquitto-edge-3
+    spec:
+      nodeSelector:
+        node-id: node-edge-3
+      containers:
+      - name: mosquitto
+        image: eclipse-mosquitto:2.0
+        ports:
+        - containerPort: 1883
+        volumeMounts:
+        - name: config
+          mountPath: /mosquitto/config/mosquitto.conf
+          subPath: mosquitto.conf
+      volumes:
+      - name: config
+        configMap:
+          name: mosquitto-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-edge-3
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: mosquitto-edge-3
+  ports:
+  - port: 1883
+    targetPort: 1883
+    nodePort: 31886 # Porta esterna accessibile dal Simulatore Python
