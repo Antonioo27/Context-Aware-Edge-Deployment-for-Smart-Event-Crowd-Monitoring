@@ -3,6 +3,7 @@ package it.unibo.cas.eventanalysis.service;
 import it.unibo.cas.eventanalysis.config.AnalysisProperties;
 import it.unibo.cas.eventanalysis.messaging.ProbeSubscriber;
 import it.unibo.cas.eventanalysis.models.entities.ProbeBatch;
+import it.unibo.cas.eventanalysis.models.enums.Trend;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -90,6 +91,10 @@ public class RunningService {
         log.info("Final summary: {}", subscriber.getStatsSnapshot());
     }
     private void doAnalysis() {
+        long estimatedPeople = analysisService.estimatePeople(probeBatches);
+        double density = analysisService.density(estimatedPeople);
+        Trend trend = analysisService.calculateTrend(estimatedPeople, density);
+
 
     }
 }

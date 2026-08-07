@@ -41,3 +41,15 @@ spec:
               name: event-analysis-config
               key: EVENTANALYSIS_ANALYSIS_MEAN
               optional: true
+        - name: EVENTANALYSIS_ANALYSIS_TREND_HIGHLY_ANGLE
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_TREND_HIGHLY_ANGLE
+              optional: true
+        - name: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
+              optional: true
