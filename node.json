@@ -1,0 +1,6 @@
+{
+  "name": "Ingresso Nord Palco",
+  "brokerUrl": "tcp://mosquitto-north.default.svc.cluster.local:1883",
+  "latitude": 44.4942,
+  "longitude": 11.3430
+}

@@ -2,6 +2,8 @@ package it.unibo.cas.eventmanagement.services;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.locationtech.jts.geom.Coordinate;
@@ -9,12 +11,17 @@ import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import io.fabric8.kubernetes.client.KubernetesClient;
 import it.unibo.cas.eventmanagement.exception.ResourceNotFoundException;
 
-import it.unibo.cas.eventmanagement.models.entities.Node;   
+import it.unibo.cas.eventmanagement.models.entities.Node;
+import it.unibo.cas.eventmanagement.models.enums.NodeType;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDTO;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDistanceDTO;
 import it.unibo.cas.eventmanagement.repositories.NodeRepository;
+import jakarta.transaction.Transactional;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +34,100 @@ public class NodeService {
     private NodeRepository nodeRepository;
 
     private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+
+    @Autowired
+    private KubernetesClient kubernetesClient;
+
+
+    /**
+    * Interroga l'API Server di Kubernetes per scoprire i nodi del cluster
+    * e creare/aggiornare le bozze dei nodi logici nel DB postgres
+    */
+    @Transactional
+    public List<NodeDTO> syncNodesFromKubernetes() {
+        logger.info("Avvio auto-discovery nodi dal cluster Kubernetes...");    
+        
+        try {
+            List<io.fabric8.kubernetes.api.model.Node> k8sNodes = kubernetesClient.nodes().list().getItems();
+            List<NodeDTO> syncedNodes = new ArrayList<>();
+
+            for (io.fabric8.kubernetes.api.model.Node k8sNode : k8sNodes) {
+                String k8sNodeName = k8sNode.getMetadata().getName();
+                Map<String, String> labels = k8sNode.getMetadata().getLabels();
+
+                String nodeId = labels.getOrDefault("node-id", k8sNodeName);
+                String tierLabel = labels.getOrDefault("tier", labels.getOrDefault("node-role", "EDGE"));
+                NodeType nodeType = tierLabel.equalsIgnoreCase("CLOUD") ? NodeType.CLOUD : NodeType.EDGE;
+
+                String defaultBrokerUrl = "tcp://mosquitto-" + nodeId.replace("node-", "") + ":1883";
+
+                Optional<Node> existing = nodeRepository.findById(nodeId);
+                Node node;
+
+                if (existing.isPresent()) {
+                    node = existing.get();
+                    node.setType(nodeType);
+                    logger.info("Aggiornato nodo K8s esistente: id={}, type={}", nodeId, nodeType);                
+                } else {
+                    node = Node.builder()
+                            .id(nodeId)
+                            .name("Nodo " + nodeType + " (" + nodeId + ")")
+                            .type(nodeType)
+                            .brokerUrl(defaultBrokerUrl)
+                            .location(geometryFactory.createPoint(new Coordinate(0.0, 0.0))) // Coord temporanee
+                            .build();
+                    logger.info("Scoperto nuovo nodo K8s: id={}, type={}", nodeId, nodeType);
+                }
+
+                Node saved = nodeRepository.save(node);
+                syncedNodes.add(convertToDTO(saved));
+            }
+
+            return syncedNodes;
+        }
+        catch (Exception e) {
+            logger.error("Errore durante la sincronizzazione con Kubernetes: {}", e.getMessage());
+            throw new RuntimeException("Impossibile effettuare la discovery dei nodi da Kubernetes: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Aggiorna la posizione geografica per un nodo logico
+     * 
+     * 
+     */
+    @Transactional
+    public NodeDTO updateNodeLocationAndBroker(String nodeId, NodeDTO dto) {
+        Node node = nodeRepository.findById(nodeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Nodo logico '" + nodeId + "' non trovato nel DB"));
+
+        if (dto == null) {
+            throw new IllegalArgumentException("Il payload inviato è nullo");
+        }
+
+        if (dto.getName() != null && !dto.getName().trim().isEmpty()) {
+            node.setName(dto.getName());
+        }
+        
+        if (dto.getBrokerUrl() != null && !dto.getBrokerUrl().trim().isEmpty()) {
+            node.setBrokerUrl(dto.getBrokerUrl());
+        }
+
+        // Aggiorna il punto geometrico PostGIS solo se le coordinate sono fornite
+        if (dto.getLatitude() < -90 || dto.getLatitude() > 90 || dto.getLongitude() < -180 || dto.getLongitude() > 180) {
+            throw new IllegalArgumentException("Coordinate Lat/Lon fuori dal range valido");
+        }
+        
+        // Aggiorna il punto geometrico PostGIS
+        node.setLocation(geometryFactory.createPoint(new Coordinate(dto.getLongitude(), dto.getLatitude())));
+        Node updated = nodeRepository.save(node);
+        
+        logger.info("Coordinate e Broker aggiornati per il nodo {}: Lat={}, Lon={}, Broker={}", 
+                nodeId, dto.getLatitude(), dto.getLongitude(), dto.getBrokerUrl());
+
+        return convertToDTO(updated);
+    }
+
 
     public Node createNode(NodeDTO dto) {
 

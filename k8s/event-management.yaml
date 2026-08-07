@@ -19,7 +19,7 @@ rules:
   resources: ["pods", "services"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
-# 3. Binding del Role al ServiceAccount
+# 3. Binding del Role per il namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -34,7 +34,32 @@ roleRef:
   name: deployment-manager
   apiGroup: rbac.authorization.k8s.io
 ---
-# 4. Deployment di EventManagement
+# 4. ClusterRole per la Discovery dei NODI a livello di Cluster
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-reader
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+---
+
+# 5. Binding del ClusterRole al ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-reader-binding
+subjects:
+- kind: ServiceAccount
+  name: event-management-sa
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: node-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# 6. Deployment di EventManagement
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -53,6 +78,8 @@ spec:
         app: event-management
     spec:
       serviceAccountName: event-management-sa 
+      nodeSelector:
+        tier: cloud
       containers:
       - name: event-management
         image: event-management:latest
@@ -62,17 +89,21 @@ spec:
         env:
         - name: SPRING_DATASOURCE_URL
           value: "jdbc:postgresql://postgis-svc:5432/event_management"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: "postgres"
+        - name: SPRING_DATASOURCE_PASSWORD
+          value: "postgres"
         - name: MQTT_BROKER_URL
           value: "tcp://mosquitto-svc:1883"
 ---
-# 5. Service per contattare l'API di EventManagement da fuori o da altri pod
+# 7. Service NodePort per accesso esterno
 apiVersion: v1
 kind: Service
 metadata:
   name: event-management-svc
   namespace: default
 spec:
-  type: NodePort # Permette l'accesso da fuori (es. Postman) su Minikube
+  type: NodePort
   selector:
     app: event-management
   ports:
