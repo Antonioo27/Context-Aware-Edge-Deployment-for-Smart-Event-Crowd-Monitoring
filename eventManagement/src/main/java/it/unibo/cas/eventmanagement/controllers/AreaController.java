@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.util.List;
 
 @RestController
 @RequestMapping("api/event/")
@@ -25,50 +26,36 @@ public class AreaController {
 
     @PostMapping("area")
     public ResponseEntity<String> createArea(@RequestBody AreaDTO areaDTO) {
-        if (areaDTO == null) {
-            logger.error("area is null");
-            return ResponseEntity.badRequest().body("Area is null");
-        }
         Area area = areaService.createArea(areaDTO);
-        if (area != null) {
-            logger.info("area created");
-            try {
-                kubernetesOrchestrationService.deployAnalysisForArea(area.getName());
-                logger.info("area pod created successfully");
-                return ResponseEntity.ok().body("area created successfully");
-            } catch (IOException e) {
-                return ResponseEntity.internalServerError().body(e.getMessage());
-            }
-        } else {
-            logger.error("something went wrong in area creating");
-            return ResponseEntity.internalServerError().body("Error occurs while creating area ");
+        try {
+            kubernetesOrchestrationService.deployAnalysisForArea(area.getName());
+            logger.info("Pod di analisi per l'area {} deployato su Kubernetes", area.getName());
+            return ResponseEntity.status(HttpStatus.CREATED).body("Area e relativo Pod creati con successo");
+        } catch (Exception e) {
+            logger.error("Area creata nel DB ma errore durante il deploy Kubernetes: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Area salvata ma errore nella creazione del Pod K8s: " + e.getMessage());
         }
+    }
+
+    @GetMapping("areas")
+    public ResponseEntity<List<Area>> getAllAreas() {
+        return ResponseEntity.ok(areaService.getAllAreas());
+    }
+
+    @GetMapping("area/{areaId}")
+    public ResponseEntity<Area> getArea(@PathVariable String areaId) {
+        return ResponseEntity.ok(areaService.getArea(areaId));
     }
 
     @GetMapping("area/{areaId}/capacity")
     public ResponseEntity<Integer> getAreaCapacity(@PathVariable String areaId) {
-        if (areaId == null) {
-            logger.error("areaId is null");
-            return ResponseEntity.badRequest().build();
-        }
-        try {
-            return ResponseEntity.ok(areaService.getCapacity(areaId));
-        } catch (Exception e) {
-            return ResponseEntity.notFound().build();
-        }
+        return ResponseEntity.ok(areaService.getCapacity(areaId));
     }
 
     @GetMapping("area/{areaId}/m2")
     public ResponseEntity<Double> getM2(@PathVariable String areaId) {
-        if (areaId == null) {
-            logger.error("areaId is null");
-            return ResponseEntity.badRequest().build();
-        }
-        try {
-            return ResponseEntity.ok(areaService.getM2(areaId));
-        } catch (Exception e) {
-            return ResponseEntity.notFound().build();
-        }
+        return ResponseEntity.ok(areaService.getM2(areaId));
     }
 
     @PutMapping("area/{areaId}")
@@ -78,21 +65,18 @@ public class AreaController {
     }
 
     @DeleteMapping("/area/{areaId}")
-    public ResponseEntity<String> deleteArea(@PathVariable String areaId) throws UnsupportedOperationException {
-        Area area = areaService.getArea(areaId);
-        if (area != null) {
-            areaService.deleteArea(area);
-            logger.info("area deleted successfully");
-            try {
-                kubernetesOrchestrationService.removeAnalysisForArea(area.getName());
-                logger.info("area pod removed successfully");
-                return ResponseEntity.ok().body("area removed successfully");
-            } catch (RuntimeException e) {
-                return ResponseEntity.internalServerError().body(e.getMessage());
-            }
-        } else {
-            logger.error("area not found");
-            return ResponseEntity.badRequest().body("Area to delete not found");
+    public ResponseEntity<String> deleteArea(@PathVariable String areaId) {
+        Area area = areaService.getArea(areaId); // lancia ResourceNotFoundException se non esiste
+        areaService.deleteArea(areaId);
+        
+        try {
+            kubernetesOrchestrationService.removeAnalysisForArea(area.getName());
+            logger.info("Pod di analisi per l'area {} rimosso con successo da K8s", area.getName());
+            return ResponseEntity.ok("Area e relativo Pod rimossi con successo");
+        } catch (Exception e) {
+            logger.error("Area rimossa dal DB ma errore durante la cancellazione del Pod K8s: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Area rimossa dal DB ma errore durante la cancellazione del Pod Kubernetes");
         }
     }
 }

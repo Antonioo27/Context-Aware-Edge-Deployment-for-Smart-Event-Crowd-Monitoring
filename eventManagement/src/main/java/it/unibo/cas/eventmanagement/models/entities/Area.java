@@ -25,7 +25,7 @@ public class Area {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "area_id")
-    private int id;
+    private Long id;
 
     @Column(unique=true)
     private String name;
