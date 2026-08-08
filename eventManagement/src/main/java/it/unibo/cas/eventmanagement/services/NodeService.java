@@ -1,6 +1,7 @@
 package it.unibo.cas.eventmanagement.services;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,30 +55,56 @@ public class NodeService {
             for (io.fabric8.kubernetes.api.model.Node k8sNode : k8sNodes) {
                 String k8sNodeName = k8sNode.getMetadata().getName();
                 Map<String, String> labels = k8sNode.getMetadata().getLabels();
+                if (labels == null) {
+                    labels = Collections.emptyMap();
+                }
 
                 String nodeId = labels.getOrDefault("node-id", k8sNodeName);
                 String tierLabel = labels.getOrDefault("tier", labels.getOrDefault("node-role", "EDGE"));
                 NodeType nodeType = tierLabel.equalsIgnoreCase("CLOUD") ? NodeType.CLOUD : NodeType.EDGE;
 
-                String defaultBrokerUrl = "tcp://mosquitto-" + nodeId.replace("node-", "") + ":1883";
 
+                // Estrazione dinamica dell'ip reale del nodo k8s
+                String nodeIp = null;
+                if (k8sNode.getStatus() != null && k8sNode.getStatus().getAddresses() != null) {
+                    for (var addr : k8sNode.getStatus().getAddresses()) {
+                        // Priorità all'ExternalIP se presente, altrimenti usiamo l'InternalIP
+                        if ("ExternalIP".equalsIgnoreCase(addr.getType()) && addr.getAddress() != null) {
+                            nodeIp = addr.getAddress();
+                            break; 
+                        } else if ("InternalIP".equalsIgnoreCase(addr.getType()) && nodeIp == null) {
+                            nodeIp = addr.getAddress();
+                        }
+                    }
+                }
+
+                // Fallback di sicurezza in locale
+                if (nodeIp == null || nodeIp.isBlank()) {
+                    nodeIp = "127.0.0.1";
+                    logger.warn("Impossibile recuperare l'IP per il nodo K8s {}. Uso fallback: 127.0.0.1", nodeId);
+                }
+
+                // Costruzione dell'URL del broker Mosquitto esposto sul nodo
+                String brokerUrl = "tcp://" + nodeIp + ":1883";
+                
                 Optional<Node> existing = nodeRepository.findById(nodeId);
                 Node node;
 
                 if (existing.isPresent()) {
                     node = existing.get();
                     node.setType(nodeType);
+                    node.setBrokerUrl(brokerUrl);
                     logger.info("Aggiornato nodo K8s esistente: id={}, type={}", nodeId, nodeType);                
                 } else {
                     node = Node.builder()
-                            .id(nodeId)
-                            .name("Nodo " + nodeType + " (" + nodeId + ")")
-                            .type(nodeType)
-                            .brokerUrl(defaultBrokerUrl)
-                            .location(geometryFactory.createPoint(new Coordinate(0.0, 0.0))) // Coord temporanee
-                            .build();
-                    logger.info("Scoperto nuovo nodo K8s: id={}, type={}", nodeId, nodeType);
-                }
+                        .id(nodeId)
+                        .name("Nodo " + nodeType + " (" + nodeId + ")")
+                        .type(nodeType)
+                        .brokerUrl(brokerUrl)
+                        .location(geometryFactory.createPoint(new Coordinate(0.0, 0.0))) // Coord temporanee da mappa
+                        .build();
+                    logger.info("Scoperto nuovo nodo K8s: id={}, type={}, brokerUrl={}", nodeId, nodeType, brokerUrl);
+            }
 
                 Node saved = nodeRepository.save(node);
                 syncedNodes.add(convertToDTO(saved));

@@ -35,6 +35,8 @@ def fetch_dynamic_areas(backend_url: str):
         response = requests.get(f"{backend_url}/api/event", timeout=5)
         response.raise_for_status()
         event_data = response.json()
+
+        raw_areas = event_data.get("areas", []) if isinstance(event_data, dict) else []
         
         dynamic_areas = [
             AreaConfig(
@@ -44,15 +46,42 @@ def fetch_dynamic_areas(backend_url: str):
                 area_type=area.get("type", "GENERIC"),
                 monitored=True
             )
-            for area in event_data.get("areas", [])
+            for area in raw_areas if "name" in area
         ]
+
+        if dynamic_areas:
+            outside = AreaConfig(area_id="outside", sensor_id="", capacity=100_000, area_type="OUTSIDE", monitored=False)
+            return [outside] + dynamic_areas
+        else:
+            print("[Info] Nessuna area definita nell'evento sul Backend. Uso la configurazione di default.")
+            
     except Exception as e:
         print(f"[Warning] Impossibile recuperare aree dal backend: {e}. Uso fallback.")
-        return default_fiera_areas()
 
-    # L'area outside serve al modello di Markov ma non risiede nel backend
-    outside = AreaConfig(area_id="outside", sensor_id="", capacity=100_000, area_type="OUTSIDE", monitored=False)
-    return [outside] + dynamic_areas
+    return default_fiera_areas()
+
+def fetch_dynamic_brokers(backend_url: str):
+    """
+    Recupera gli url dei broker Mosquitto di tutti i nodi dal backend
+    """
+    try:
+        response = requests.get(f"{backend_url}/api/nodes", timeout=5)
+        response.raise_for_status()
+        nodes_data = response.json()
+
+        urls = [
+            node["brokerUrl"] for node in nodes_data
+            if "brokerUrl" in node and node["brokerUrl"]
+        ]
+
+        if urls:
+            print(f"[Config] Discovery completata: trovati {len(urls)} broker MQTT: {urls}")
+            return urls
+    except Exception as e:
+        print(f"[Warning] Impossibile recuperare i broker dal backend: {e}. Uso fallback locale.")
+    
+    # Fallback se il backend non è ancora raggiungibile
+    return ["tcp://localhost:1883"]
 
 @dataclass
 class SimConfig:
@@ -94,6 +123,7 @@ class SimConfig:
     seed: int = 42
 
     # --- Trasporto MQTT ---
+    broker_urls: list[str] = field(default_factory=list)
     mqtt_host: str = "localhost"
     mqtt_port: int = 1883
     mqtt_keepalive: int = 30
@@ -131,6 +161,13 @@ class SimConfig:
         cfg.duration_seconds = _env_int("SIM_DURATION_SECONDS", cfg.duration_seconds)
 
         cfg.areas = fetch_dynamic_areas(cfg.backend_url)
+
+        # Se specificata da variabile ambiente usa quella, altrimenti la scopre da /api/nodes
+        env_brokers = os.getenv("SIM_BROKER_URLS")
+        if env_brokers:
+            cfg.broker_urls = [b.strip() for b in env_brokers.split(",") if b.strip()]
+        else:
+            cfg.broker_urls = fetch_dynamic_brokers(cfg.backend_url)
 
         cfg.probe_interval_mean = _env_float("SIM_PROBE_INTERVAL_MEAN", cfg.probe_interval_mean)
         cfg.probe_interval_min = _env_float("SIM_PROBE_INTERVAL_MIN", cfg.probe_interval_min)

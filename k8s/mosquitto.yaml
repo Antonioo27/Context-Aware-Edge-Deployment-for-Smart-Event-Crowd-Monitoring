@@ -36,6 +36,8 @@ spec:
         image: eclipse-mosquitto:2.0
         ports:
         - containerPort: 1883
+          hostPort: 1883
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /mosquitto/config/mosquitto.conf
@@ -84,6 +86,8 @@ spec:
         image: eclipse-mosquitto:2.0
         ports:
         - containerPort: 1883
+          hostPort: 1883
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /mosquitto/config/mosquitto.conf
@@ -132,6 +136,8 @@ spec:
         image: eclipse-mosquitto:2.0
         ports:
         - containerPort: 1883
+          hostPort: 1883
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /mosquitto/config/mosquitto.conf
@@ -180,6 +186,8 @@ spec:
         image: eclipse-mosquitto:2.0
         ports:
         - containerPort: 1883
+          hostPort: 1883
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /mosquitto/config/mosquitto.conf

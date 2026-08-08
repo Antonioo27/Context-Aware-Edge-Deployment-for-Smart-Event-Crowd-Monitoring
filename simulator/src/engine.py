@@ -134,10 +134,11 @@ class SimulationEngine:
         # e' invisibile e ti accorgi a fine run che non e' arrivato nulla.
         if int(t) % 30 == 0 and t > 0:
             s = self.publisher.snapshot_stats()
-            if not s["connected"] or s["buffered"]:
+            connected_str = f"{s['connected_brokers']}/{s['total_brokers']}"
+            if s["connected_brokers"] == 0 or s["buffered"]:
                 logger.warning(
-                    "t=%.0fs broker connesso=%s, in buffer=%s, scartati=%d",
-                    t, s["connected"], s["buffered"], s["probes_dropped"],
+                    "t=%.0fs broker attivi=%s, in buffer=%s, scartati=%d",
+                    t, connected_str, s["buffered"], s["probes_dropped"],
                 )
         
     def teardown(self):

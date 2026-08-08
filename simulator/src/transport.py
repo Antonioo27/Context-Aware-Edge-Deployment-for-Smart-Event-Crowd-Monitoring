@@ -1,5 +1,5 @@
 """
-Transporto MQTT del simulatore
+Transporto MQTT Multi-broker del simulatore
 Il buffer è partizionato per area, ogni area ha il suo topic (`event/probes/<area_id>`)
 Il trasporto è MQTT con QoS 1, la publish() fatta da paho non è bloccante, il messaggio viene messo in una coda interna
 e un thread di rete lo spedisce.
@@ -10,18 +10,114 @@ batch spediti e batch confermati.
 
 
 import json
+from logging import config
+import logging
 import threading
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
  
 import paho.mqtt.client as mqtt
 
 from .config import SimConfig
 from .models import ProbeEvent
 
+
+logger = logging.getLogger("simulator.transport")
+
+class SingleBrokerConnection:
+    """
+    Rappresenta una singola connessione MQTT verso un broker specifico 
+    """
+
+    def __init__(
+        self,
+        broker_url: str,
+        client_id_prefix: str,
+        config: SimConfig,
+        on_publish_cb,
+        on_disconnect_cb,
+    ):
+        
+        self.broker_url = broker_url
+        self.config = config 
+
+        parsed = urlparse(broker_url if "://" in broker_url else f"tcp://{broker_url}")
+        self.host = parsed.hostname or "localhost"
+        self.port = parsed.port or 1883
+
+        # ID univoco per evitare conflitti tra connessioni allo stesso simulatore
+        client_id = f"{client_id_prefix}-{self.host}-{self.port}"
+
+        self.client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            client_id=client_id,
+            protocol=mqtt.MQTTv311,
+            clean_session=config.mqtt_clean_session,
+        )
+
+        self.client.reconnect_delay_set(min_delay=1, max_delay=8)
+        self.client.max_inflight_messages_set(40)
+        self.client.max_queued_messages_set(1000)
+
+        self.client.will_set(
+            f"{config.mqtt_topic_prefix}/status/simulator",
+            json.dumps({"state": "offline", "reason": "lwt", "broker": self.host}),
+            qos=1,
+            retain=True,
+        )
+
+        self.client.on_connect = self._on_connect
+        self.client.on_disconnect = on_disconnect_cb
+        self.client.on_publish = self._on_publish_wrapper(on_publish_cb)
+
+    def _on_publish_wrapper(self, external_cb):
+        def _cb(client, userdata, mid, *args):
+            external_cb(client, userdata, mid, *args)
+        return _cb
+
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
+        if reason_code == 0:
+            logger.info(f"[Transport] Connesso al broker: {self.host}:{self.port}")
+            client.publish(
+                f"{self.config.mqtt_topic_prefix}/status/simulator",
+                json.dumps({"state": "online", "broker": self.host}),
+                qos=1,
+                retain=True,
+            )
+        else:
+            logger.warning(f"[Transport] Connessione fallita a {self.host}:{self.port} con codice {reason_code}")
+
+    def start(self):
+        try:
+            self.client.connect_async(self.host, self.port, keepalive=self.config.mqtt_keepalive)
+            self.client.loop_start()
+        except Exception as e:
+            logger.error(f"[Transport] Errore avvio connessione a {self.broker_url}: {e}")
+
+    def is_connected(self) -> bool:
+        return self.client.is_connected()
+
+    def publish(self, topic: str, payload: str, qos: int):
+        return self.client.publish(topic, payload, qos=qos, retain=False)
+
+    def close(self):
+        try:
+            self.client.publish(
+                f"{self.config.mqtt_topic_prefix}/status/simulator",
+                json.dumps({"state": "offline", "reason": "shutdown", "broker": self.host}),
+                qos=1,
+                retain=True,
+            )
+            self.client.disconnect()
+            self.client.loop_stop()
+        except Exception:
+            pass
+
 class ProbePublisher:
     """
-    Pubblica i probe sul broker MQTT, un topic pera area
+    Pubblica i probe sui broker MQTT in BROADCAST (un topic per area).
+    Mantiene l'interfaccia compatibile con SimulationEngine (engine.py).
     """
 
     def __init__(self, config: SimConfig):
@@ -52,61 +148,31 @@ class ProbePublisher:
             "reconnects": 0,
         }
 
-        self._client = self._build_client()
+        self._brokers: list[SingleBrokerConnection] = []
+        self._init_broker_pool()
 
-    def _build_client(self):
-        cfg = self.config
+    def _init_broker_pool(self):
+        urls = self.config.broker_urls if self.config.broker_urls else ["tcp://localhost:1883"]
+        logger.info(f"[Transport] Inizializzazione pool broadcast per {len(urls)} broker: {urls}")
 
-        client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id=cfg.mqtt_client_id,
-            protocol=mqtt.MQTTv311,
-            clean_session=cfg.mqtt_clean_session,
-        )
+        for idx, url in enumerate(urls):
+            conn = SingleBrokerConnection(
+                broker_url=url,
+                client_id_prefix=f"{self.config.mqtt_client_id}-{idx}",
+                config=self.config,
+                on_publish_cb=self._on_publish,
+                on_disconnect_cb=self._on_disconnect,
+            )
+            self._brokers.append(conn)
 
-        # Ritardo esponenziale tra tentativi di riconnessione
-        client.reconnect_delay_set(min_delay=1, max_delay=8)
-
-        # Messaggi QoS>0 in volo senza PUBACK
-        client.max_inflight_messages_set(40)  
-
-        # Buffer interno di Paho
-        client.max_queued_messages_set(1000)
-
-        # Messaggio che verrà inviato se il broker muore o il client si disconnette in modo anomalo
-        client.will_set(
-            f"{cfg.mqtt_topic_prefix}/status/simulator",
-            json.dumps({"state": "offline", "reason": "lwt"}),
-            qos=1,
-            retain=True,
-        )
-
-        client.on_connect = self._on_connect
-        client.on_disconnect = self._on_disconnect
-        client.on_publish = self._on_publish
-        return client
-
+    
 
     def start(self):
         """
-        Avvia la connessione ed il thread di rete
-
-        con connect_async() invece di connect() il pod del simulatore
-        può partire prima di Mosquitto.
+        Avvia le connessioni ed i thread di rete per ciascun broker
         """
-
-        cfg = self.config
-        self._client.connect_async(cfg.mqtt_host, cfg.mqtt_port, keepalive=cfg.mqtt_keepalive)
-        self._client.loop_start()
-
-    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
-        if reason_code == 0:
-            client.publish(
-                f"{self.config.mqtt_topic_prefix}/status/simulator",
-                json.dumps({"state": "online"}),
-                qos=1,
-                retain=True,
-            )
+        for b in self._brokers:
+            b.start()
 
     def _on_disconnect(self, client, userdata, *args):
         with self._lock:
@@ -114,16 +180,17 @@ class ProbePublisher:
 
     def _on_publish(self, client, userdata, mid, *args):
         """
-        PUBACK ricevuto: il broker ha preso in carico il batch
+        PUBACK ricevuto da uno dei broker
         """
         with self._lock:
-            if mid in self._pending_mids:
-                self._pending_mids.discard(mid)
+            key = (client, mid)
+            if key in self._pending_mids:
+                self._pending_mids.discard(key)
                 self.stats["batches_acked"] += 1
 
-    def is_connected(self):
-        return self._client.is_connected()
-
+    def is_connected(self) -> bool:
+        """Ritorna True se almeno UN broker del pool è connesso"""
+        return any(b.is_connected() for b in self._brokers)
 
     # API usata dal motore di simulazione
 
@@ -174,16 +241,14 @@ class ProbePublisher:
         if not buf:
             return
 
-        # Se non siamo connessi non consegnamo niente, i probe restano nel buffer invece
-        # di finire nella cosa interna della libreria   
-        if not self._client.is_connected():
+        # Se nessun broker è connesso, conserviamo i dati nei buffer
+        if not self.is_connected():
             self._enforce_buffer_cap(area_id)
             return
 
         while buf:
             chunk = buf[: self.config.batch_max_events]
             if not self._publish_batch(area_id, chunk):
-                # publish rifiutata, esce dal ciclo e lascia il resto nel buffer
                 break
             del buf[: len(chunk)]
 
@@ -211,11 +276,17 @@ class ProbePublisher:
         raw = json.dumps(payload, separators=(",", ":"))
         topic = f"{cfg.mqtt_topic_prefix}/probes/{area_id}"
 
-        info = self._client.publish(topic, raw, qos=cfg.mqtt_qos, retain=False)
+        published_any = False
+        for broker in self._brokers:
+            if broker.is_connected():
+                info = broker.publish(topic, raw, qos=cfg.mqtt_qos)
+                if info.rc == mqtt.MQTT_ERR_SUCCESS:
+                    published_any = True
+                    with self._lock:
+                        if cfg.mqtt_qos > 0:
+                            self._pending_mids.add((broker.client, info.mid))
 
-        if info.rc != mqtt.MQTT_ERR_SUCCESS:
-            # Tipicamente MQTT_ERR_QUEUE_SIZE (coda interna piena) o
-            # MQTT_ERR_NO_CONN (connessione caduta tra il check e la publish).
+        if not published_any:
             with self._lock:
                 self.stats["probes_requeued"] += len(chunk)
             return False
@@ -225,8 +296,7 @@ class ProbePublisher:
         with self._lock:
             self.stats["probes_published"] += len(chunk)
             self.stats["batches_published"] += 1
-            if cfg.mqtt_qos > 0:
-                self._pending_mids.add(info.mid)
+
         return True
 
     @staticmethod
@@ -265,15 +335,8 @@ class ProbePublisher:
                     break
             time.sleep(0.05)
 
-        self._client.publish(
-            f"{self.config.mqtt_topic_prefix}/status/simulator",
-            json.dumps({"state": "offline", "reason": "shutdown"}),
-            qos=1,
-            retain=True,
-        )
-
-        self._client.disconnect()
-        self._client.loop_stop()
+        for b in self._brokers:
+            b.close()
 
 
     def snapshot_stats(self) -> dict:
@@ -284,7 +347,9 @@ class ProbePublisher:
             s = dict(self.stats)
             s["batches_in_flight"] = len(self._pending_mids)
         s["buffered"] = {a: len(b) for a, b in self._buffers.items() if b}
-        s["connected"] = self._client.is_connected()
+        s["connected"] = self.is_connected()
+        s["connected_brokers"] = sum(1 for b in self._brokers if b.is_connected())
+        s["total_brokers"] = len(self._brokers)
         return s
 
 

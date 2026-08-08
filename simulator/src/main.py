@@ -42,8 +42,8 @@ def main():
         config.seed, config.expected_total_probe_rate(),
     )
     logger.info(
-        "MQTT: %s:%d, client_id=%s, qos=%d, clean_session=%s, prefisso topic=%s",
-        config.mqtt_host, config.mqtt_port, config.mqtt_client_id,
+        "MQTT Broadcast verso %d broker: %s | client_id=%s, qos=%d, clean_session=%s, prefisso topic=%s",
+        len(config.broker_urls), config.broker_urls, config.mqtt_client_id,
         config.mqtt_qos, config.mqtt_clean_session, config.mqtt_topic_prefix,
     )
     try:
