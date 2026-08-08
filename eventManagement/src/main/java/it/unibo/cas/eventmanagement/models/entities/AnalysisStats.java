@@ -1,6 +1,6 @@
 package it.unibo.cas.eventmanagement.models.entities;
 
-import it.unibo.cas.eventanalysis.models.enums.Trend;
+import it.unibo.cas.eventmanagement.models.enums.Trend;
 import lombok.*;
 import org.springframework.beans.factory.annotation.Value;
 
