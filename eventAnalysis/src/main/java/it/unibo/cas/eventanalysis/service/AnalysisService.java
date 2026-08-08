@@ -2,6 +2,8 @@ package it.unibo.cas.eventanalysis.service;
 
 import it.unibo.cas.eventanalysis.models.entities.*;
 import it.unibo.cas.eventanalysis.models.enums.Trend;
+import lombok.Getter;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -11,6 +13,7 @@ import java.util.List;
 
 @Service
 public class AnalysisService {
+    @Getter
     @Value("${eventanalysis.analysis.windows-size:60}")
     private int windowSize;
 
@@ -23,19 +26,23 @@ public class AnalysisService {
     @Value("${eventanalysis.analysis.trend-highly-angle:45}")
     private int trend_highly;
 
-    private final AnalysisHistory analysisHistory;
-
     @Autowired
     private Area area;
 
     public AnalysisService() {
-        this.analysisHistory = new AnalysisHistory();
-        if(trend_stable > 90 || trend_stable < 0)
+        if (trend_stable > 90 || trend_stable < 0)
             trend_stable = 10;
-        if(trend_highly > 90 || trend_highly < 0)
+        if (trend_highly > 90 || trend_highly < 0)
             trend_highly = 45;
     }
 
+    /**
+     * Count the number of different MAC addresses in the given probe batches.
+     * 
+     * @param probeBatches the probe batches to count the number of different MAC
+     *                     addresses
+     * @return the number of different MAC addresses
+     */
     public int countNumDifferentMac(List<ProbeBatch> probeBatches) {
         HashMap<String, Probe> probeMap = new HashMap<>();
         for (ProbeBatch probeBatch : probeBatches) {
@@ -46,66 +53,83 @@ public class AnalysisService {
         return probeMap.size();
     }
 
-    public long estimatePeople(List<ProbeBatch> probeBatches){
+    /**
+     * Estimate the number of people in the given probe batches.
+     * 
+     * @param probeBatches the probe batches to estimate the number of people
+     * @return the estimated number of people
+     */
+    public long estimatePeople(List<ProbeBatch> probeBatches) {
         return estimatePeople(countNumDifferentMac(probeBatches));
-
     }
 
-    public long estimatePeople(int numDifferentMac){
+    /**
+     * Estimate the number of people based on the number of different MAC addresses.
+     * 
+     * @param numDifferentMac the number of different MAC addresses
+     * @return the estimated number of people
+     */
+    public long estimatePeople(int numDifferentMac) {
         return Math.round(
                 numDifferentMac / (1 - Math.exp(((double) -windowSize / mean))));
     }
 
+    /**
+     * Calculate the density of the crowd.
+     * 
+     * @param estimatedPeople the estimated number of people
+     * @return the density of the crowd
+     */
     public double density(long estimatedPeople) {
         return estimatedPeople / area.m2();
     }
 
+    /**
+     * Calculate the density of the crowd.
+     * 
+     * @param probeBatches the probe batches to estimate the density
+     * @return the density of the crowd
+     */
     public double density(List<ProbeBatch> probeBatches) {
         return estimatePeople(probeBatches) / area.m2();
     }
 
-    public void calculateTrend(){
-
-    }
-
-    public Trend calculateTrend(long estimatedPeople, double density) {
-        AnalysisStats analysisStats = AnalysisStats.builder()
-                .estimatedPeople(estimatedPeople)
-                .density(density)
-                .latency(0.0) // todo: get a true value of latency
-                .build();
-
-        analysisHistory.addAnalysisStats(analysisStats);
-        
-        List<AnalysisStats> statsList = analysisHistory.getAnalysisStats();
-        if(statsList.size() < 5) {
+    /**
+     * Calculate the trend of the crowd density based on the previous density
+     * values.
+     * 
+     * @param previousStats the previous density values (at least 5)
+     * @return the trend of the crowd density
+     */
+    public Trend calculateTrend(List<AnalysisStats> previousStats) {
+        if (previousStats.size() < 5) {
             return Trend.NOT_ENOUGH_VALUES;
         }
 
         // Perform linear regression on the last 5 values to find the slope
         // Calculate the slope based on density to ensure it's area-independent
-        double slope = getSlope(statsList);
+        double slope = getSlope(previousStats);
 
+        return getTrend(slope);
+    }
+
+    private @NonNull Trend getTrend(double slope) {
         // Convert the slope to an angle in degrees [-90, 90]
         double angleInDegrees = Math.toDegrees(Math.atan(slope));
-
+        Trend trend;
         // Classify the trend based on the calculated angle
         if (angleInDegrees > trend_highly) {
-            analysisStats.setTrend(Trend.HIGHLY_RISING);
-            return Trend.HIGHLY_RISING;
+            trend = Trend.HIGHLY_RISING;
         } else if (angleInDegrees > trend_stable) {
-            analysisStats.setTrend(Trend.RISING);
-            return Trend.RISING;
+            trend = Trend.RISING;
         } else if (angleInDegrees >= -trend_stable) {
-            analysisStats.setTrend(Trend.STABLE);
-            return Trend.STABLE;
+            trend = Trend.STABLE;
         } else if (angleInDegrees >= -trend_highly) {
-            analysisStats.setTrend(Trend.DOWNING);
-            return Trend.DOWNING;
+            trend = Trend.DOWNING;
         } else {
-            analysisStats.setTrend(Trend.HIGHLY_DOWNING);
-            return Trend.HIGHLY_DOWNING;
+            trend = Trend.HIGHLY_DOWNING;
         }
+        return trend;
     }
 
     private static double getSlope(List<AnalysisStats> statsList) {
@@ -118,7 +142,8 @@ public class AnalysisService {
         for (int i = 0; i < n; i++) {
             // Using indices 1, 2, 3, 4, 5 as x (time) values
             double x = i + 1;
-            // Using density (people/m2) instead of estimatedPeople for a fair comparison across areas
+            // Using density (people/m2) instead of estimatedPeople for a fair comparison
+            // across areas
             double y = statsList.get(i).getDensity();
 
             sumX += x;

@@ -17,10 +17,13 @@ public class BatchService {
      * Check if the batch is the last one.
      * 
      * @param batch     the batch to check
-     * @param lastBatch the last batch
-     * @return true if the batch is the last one, false otherwise
+     * @param lastBatch the last batch (can be null)
+     * @return true if the batch is the consecutive one, false otherwise
      */
     public boolean batchIsLast(ProbeBatch batch, ProbeBatch lastBatch) {
+        if (lastBatch == null) {
+            return true; // if there is no last batch, it's the first one, so sequence is fine
+        }
         return batch.getBatchId() == (lastBatch.getBatchId() + 1);
     }
 
