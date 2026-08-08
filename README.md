@@ -137,7 +137,7 @@ L'infrastruttura è progettata per essere eseguita in un ambiente distribuito. P
 ### 1. Inizializzazione del Cluster
 Avvia Minikube richiedendo esplicitamente la creazione di 4 nodi virtuali:
 ```bash
-minikube start --n 4
+minikube start --nodes 4
 ```
 *(Puoi verificare lo stato dei nodi lanciando `kubectl get nodes`)*
 

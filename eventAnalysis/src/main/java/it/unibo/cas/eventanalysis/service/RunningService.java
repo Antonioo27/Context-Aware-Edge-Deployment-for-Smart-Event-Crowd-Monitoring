@@ -3,11 +3,8 @@ package it.unibo.cas.eventanalysis.service;
 import it.unibo.cas.eventanalysis.clients.EventManagementClient;
 import it.unibo.cas.eventanalysis.config.AnalysisProperties;
 import it.unibo.cas.eventanalysis.messaging.ProbeSubscriber;
-import it.unibo.cas.eventanalysis.models.entities.AnalysisHistory;
-import it.unibo.cas.eventanalysis.models.entities.AnalysisStats;
+import it.unibo.cas.eventanalysis.models.entities.*;
 import it.unibo.cas.eventanalysis.models.DTOs.AnalysisStatsDTO;
-import it.unibo.cas.eventanalysis.models.entities.Area;
-import it.unibo.cas.eventanalysis.models.entities.ProbeBatch;
 import it.unibo.cas.eventanalysis.models.enums.Trend;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +55,8 @@ public class RunningService {
     @Autowired
     private Area area;
 
+    private long lastAlert = 0;
+
     @EventListener(ApplicationReadyEvent.class)
     public void startAnalysisLoop() {
         // Start in a separate thread to not block Spring Boot startup
@@ -104,8 +103,15 @@ public class RunningService {
 
                 AnalysisStats analysisStats = doAnalysis();
                 
-                alertService.checkAlerts(analysisHistory);
+                Alert alert = alertService.checkAlerts(analysisHistory);
 
+                if (alert != null) {
+                    if (lastAlert * 3 >= now) {
+                        // wait for 3 windows size until sending next alert.
+                        alertService.sendAlert(alert);
+                        lastAlert = now;
+                    }
+                }
 
                 AnalysisStatsDTO analysisStatsDTO = AnalysisStatsDTO.builder()
                         .node(kubernetesService.getNodeName())

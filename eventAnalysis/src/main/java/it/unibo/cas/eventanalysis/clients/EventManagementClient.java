@@ -1,6 +1,7 @@
 package it.unibo.cas.eventanalysis.clients;
 
 import it.unibo.cas.eventanalysis.models.DTOs.AnalysisStatsDTO;
+import it.unibo.cas.eventanalysis.models.entities.Alert;
 import it.unibo.cas.eventanalysis.models.entities.AnalysisStats;
 import it.unibo.cas.eventanalysis.models.entities.Area;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,9 +57,21 @@ public class EventManagementClient {
 
     public void sendAnalysis(AnalysisStatsDTO analysisStats) {
         // todo: complete the rest api requests
-        String url = eventManagementApiUrl + "/api/event/"+ area.id()  +"/analysis";
+        String url = eventManagementApiUrl + "/api/event/area/analysis";
         try {
             restTemplate.postForEntity(url, analysisStats, String.class);
+        }
+        catch (Exception e) {
+            throw new RuntimeException("Error occurs while try to comunicate with EventManagement: " + e.getMessage(),
+                    e);
+        }
+    }
+
+    public void sendAlert(Alert alert) {
+        // todo: complete the rest api requests
+        String url = eventManagementApiUrl + "/api/event/"+ area.id()  +"/alert";
+        try {
+            restTemplate.postForEntity(url, alert, String.class);
         }
         catch (Exception e) {
             throw new RuntimeException("Error occurs while try to comunicate with EventManagement: " + e.getMessage(),

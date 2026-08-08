@@ -1,7 +1,9 @@
 package it.unibo.cas.eventmanagement.controllers;
 
 import it.unibo.cas.eventmanagement.models.DTOs.AreaDTO;
+import it.unibo.cas.eventmanagement.models.entities.AnalysisStats;
 import it.unibo.cas.eventmanagement.models.entities.Area;
+import it.unibo.cas.eventmanagement.services.AnalysisService;
 import it.unibo.cas.eventmanagement.services.AreaService;
 import it.unibo.cas.eventmanagement.services.KubernetesOrchestrationService;
 import org.slf4j.Logger;
@@ -18,6 +20,9 @@ import java.util.List;
 @RequestMapping("api/event/")
 public class AreaController {
     private static final Logger logger = LoggerFactory.getLogger(AreaController.class);
+
+    @Autowired
+    private AnalysisService analysisService;
 
     @Autowired
     private AreaService areaService;
@@ -68,7 +73,7 @@ public class AreaController {
     public ResponseEntity<String> deleteArea(@PathVariable String areaId) {
         Area area = areaService.getArea(areaId); // lancia ResourceNotFoundException se non esiste
         areaService.deleteArea(areaId);
-        
+
         try {
             kubernetesOrchestrationService.removeAnalysisForArea(area.getName());
             logger.info("Pod di analisi per l'area {} rimosso con successo da K8s", area.getName());
@@ -78,5 +83,14 @@ public class AreaController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Area rimossa dal DB ma errore durante la cancellazione del Pod Kubernetes");
         }
+    }
+
+    @PostMapping("area/analysis")
+    public ResponseEntity<String> sendAnalysis(@RequestBody AnalysisStats analysisStats) {
+        if (analysisStats == null) {
+            return ResponseEntity.badRequest().body("Area statistical analysis is null");
+        }
+        analysisService.addAnalysis(analysisStats);
+        return ResponseEntity.ok("Analysis got with success");
     }
 }
