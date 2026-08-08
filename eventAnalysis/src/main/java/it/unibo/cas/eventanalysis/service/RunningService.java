@@ -6,6 +6,7 @@ import it.unibo.cas.eventanalysis.messaging.ProbeSubscriber;
 import it.unibo.cas.eventanalysis.models.entities.*;
 import it.unibo.cas.eventanalysis.models.DTOs.AnalysisStatsDTO;
 import it.unibo.cas.eventanalysis.models.enums.Trend;
+import jakarta.annotation.PreDestroy;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -42,7 +43,13 @@ public class RunningService {
 
     @Autowired
     private KubernetesService kubernetesService;
-
+    
+    @Autowired
+    private BatchService batchService;
+    
+    @Autowired
+    private Area area;
+    
     @Setter
     @Getter
     private ArrayList<ProbeBatch> probeBatches = new ArrayList<>();
@@ -50,15 +57,13 @@ public class RunningService {
     private final AnalysisHistory analysisHistory = new AnalysisHistory();
     private ProbeBatch lastProcessedBatch = null;
 
-    @Autowired
-    private BatchService batchService;
-    @Autowired
-    private Area area;
-
-    private long lastAlert = 0;
+    private volatile boolean running = true;
+    private long lastAlertNanos = 0;
 
     @EventListener(ApplicationReadyEvent.class)
     public void startAnalysisLoop() {
+        subscriber.start();
+
         // Start in a separate thread to not block Spring Boot startup
         Thread analysisThread = new Thread(this::runLoop, "AnalysisLoopThread");
         analysisThread.start();
@@ -68,15 +73,14 @@ public class RunningService {
         log.info("Starting analysis area={} | broker {}:{} | topic={}",
                 config.areaId(), config.mqttHost(), config.mqttPort(), config.topicProbes());
 
-        subscriber.start();
-
         if (!subscriber.waitConnected(15, TimeUnit.SECONDS)) {
-            log.warn("Broker unreachable: will keep trying in background");
+            log.warn("Broker unreachable during startup: will keep trying in background");
         }
 
-        long nextStats = System.nanoTime() + (long) (analysisService.getWindowSize() * 1_000_000_000L);
+        long windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
+        long nextStats = System.nanoTime() + windowNanos;
 
-        while (!subscriber.isStopping() && !Thread.currentThread().isInterrupted()) {
+        while(running && !Thread.currentThread().isInterrupted()) {
             ProbeBatch batch = subscriber.get(1, TimeUnit.SECONDS);
 
             if (batch != null) {
@@ -84,7 +88,7 @@ public class RunningService {
                         batch.getBatchId(), batch.getCountEffective(), batch.getCountDeclared(),
                         batch.getMalformedProbes(),
                         String.format(java.util.Locale.US, "%.1f", batch.getTransportLatencyMs()));
-
+                
                 subscriber.ack(batch);
 
                 if (!batchService.batchIsLast(batch, lastProcessedBatch))
@@ -98,36 +102,42 @@ public class RunningService {
 
             long now = System.nanoTime();
             if (now >= nextStats) {
-                log.info("transport: {}", subscriber.getStatsSnapshot());
-                nextStats = now + (long) (analysisService.getWindowSize() * 1_000_000_000L);
+                log.info("Transport stats: {}", subscriber.getStatsSnapshot());
+                windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
+                nextStats = now + windowNanos;
 
-                AnalysisStats analysisStats = doAnalysis();
-                
-                Alert alert = alertService.checkAlerts(analysisHistory);
+                if (!probeBatches.isEmpty()) {
+                    AnalysisStats analysisStats = doAnalysis();
 
-                if (alert != null) {
-                    if (lastAlert * 3 >= now) {
-                        // wait for 3 windows size until sending next alert.
-                        alertService.sendAlert(alert);
-                        lastAlert = now;
+                    Alert alert = alertService.checkAlerts(analysisHistory);
+                    if (alert != null) {
+                        // Rate limiting alert: attende almeno 3 finestre temporali prima del successivo invio
+                        if (lastAlertNanos == 0 || (now - lastAlertNanos) >= 3 * windowNanos) {
+                            alertService.sendAlert(alert);
+                            lastAlertNanos = now;
+                        }
                     }
+
+                    AnalysisStatsDTO analysisStatsDTO = AnalysisStatsDTO.builder()
+                            .node(kubernetesService.getNodeName())
+                            .area_id(area.id())
+                            .ts(OffsetDateTime.now())
+                            .trend(analysisStats.getTrend())
+                            .served_by("analysis-" + area.id())
+                            .estimatedPeople(analysisStats.getEstimatedPeople())
+                            .density(analysisStats.getDensity())
+                            .build();
+
+                    log.info("Analysis cycle completed! Sending data to EventManagement: {}", analysisStatsDTO);
+                    try {
+                        eventManagementClient.sendAnalysis(analysisStatsDTO);
+                    } catch (Exception e) {
+                        log.error("Failed to send analysis stats to EventManagement backend: {}", e.getMessage());
+                    }
+
+                    // Pulisce la finestra scorrevole per il ciclo successivo
+                    probeBatches.clear();
                 }
-
-                AnalysisStatsDTO analysisStatsDTO = AnalysisStatsDTO.builder()
-                        .node(kubernetesService.getNodeName())
-                        .area_id(area.id())
-                        .ts(OffsetDateTime.now())
-                        .trend(analysisStats.getTrend())
-                        .served_by("analysis-"+area.id())
-                        .estimatedPeople(analysisStats.getEstimatedPeople())
-                        .density(analysisStats.getDensity())
-                        .build();
-
-
-                log.info("First analysis! Data was send: {}",analysisStatsDTO.toString());
-                eventManagementClient.sendAnalysis(analysisStatsDTO);
-                // Clear the sliding window after the analysis cycle
-                probeBatches.clear();
             }
         }
 
@@ -151,5 +161,14 @@ public class RunningService {
         analysisStats.setTrend(trend);
         
         return analysisStats;
+    }
+
+    @PreDestroy
+    public void stop() {
+        log.info("Arresto graceful di RunningService per area={}...", config.areaId());
+        this.running = false;
+        if (subscriber != null) {
+            subscriber.stop();
+        }
     }
 }

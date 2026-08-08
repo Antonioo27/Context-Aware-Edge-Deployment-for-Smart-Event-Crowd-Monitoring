@@ -5,6 +5,7 @@ import it.unibo.cas.eventanalysis.config.AnalysisProperties;
 import it.unibo.cas.eventanalysis.exception.InvalidBatchException;
 import it.unibo.cas.eventanalysis.models.entities.ProbeBatch;
 import it.unibo.cas.eventanalysis.models.entities.SubscriberStats;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.IMqttActionListener;
 import org.eclipse.paho.client.mqttv3.IMqttToken;
@@ -19,7 +20,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Subscribes to an MQTT topic, delegates deserialization to ProbeBatchParser,
+ * Subscribes to an MQTT topic on the LOCAL broker, delegates deserialization to
+ * ProbeBatchParser,
  * handles deduplication, and puts batches in a thread-safe queue.
  */
 @Slf4j
@@ -52,7 +54,7 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         log.info("Starting subscriber area={} client_id={} topic={} qos={} clean_session={}",
                 config.areaId(), config.subscriberClientId(), config.topicProbes(),
                 config.mqttQos(), config.mqttCleanSession());
-        
+
         mqttClient.connect();
     }
 
@@ -62,6 +64,18 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
+        }
+    }
+
+    @PreDestroy
+    public void stop() {
+        log.info("ProbeSubscriber stop by area={}...", config.areaId());
+        try {
+            if (mqttClient != null && mqttClient.isConnected()) {
+                mqttClient.disconnect();
+            }
+        } catch (Exception e) {
+            log.warn("Error during the disconnection MQTT: {}", e.getMessage());
         }
     }
 

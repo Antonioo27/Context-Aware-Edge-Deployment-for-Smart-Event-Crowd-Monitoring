@@ -22,7 +22,9 @@ spec:
         - name: AREA_ID
           value: "[AREA_ID]"
         - name: MQTT_HOST
-          value: "mosquitto-svc"
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
         - name: EVENTANALYSIS_PROBE_THRESHOLD_RSSI
           valueFrom:
             configMapKeyRef:
