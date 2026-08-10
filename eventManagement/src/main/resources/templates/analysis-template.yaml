@@ -14,9 +14,10 @@ spec:
         app: event-analysis
         area: [K8S_AREA_ID]
     spec:
+      serviceAccountName: event-management-sa
       containers:
       - name: analysis
-        image: event-analysis:latest
+        image: event-analysis:v2
         imagePullPolicy: Never
         env:
         - name: AREA_ID

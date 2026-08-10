@@ -11,9 +11,8 @@ public class AnalysisService {
     @Autowired
     private AreaService areaService;
 
-
     public void addAnalysis(AnalysisStats analysisStats) {
         // TODO
-        log.debug("Adding analysis stats to analysis: {}", analysisStats);
+        log.info("Adding analysis stats to analysis: {}", analysisStats);
     }
 }

@@ -81,9 +81,8 @@ public class AreaService {
     }
 
     public Double getM2(String areaId) {
-        // TODO calcolare l'area tramite postgis.
-        Area area = getArea(areaId);
-        return 0.0;
+        Double area = areaRepository.getAreaSizeInSquareMeters(areaId);
+        return area != null ? area : 0.0;
     }
 
     public List<Area> getAllAreas() {

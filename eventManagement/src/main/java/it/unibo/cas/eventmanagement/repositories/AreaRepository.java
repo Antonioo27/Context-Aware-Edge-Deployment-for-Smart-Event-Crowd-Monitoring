@@ -9,4 +9,7 @@ import org.springframework.stereotype.Repository;
 public interface AreaRepository extends JpaRepository<Area, Integer> {
 
     Area getAreaByName(String name);
+
+    @org.springframework.data.jpa.repository.Query(value = "SELECT ST_Area(boundary::geography) FROM areas WHERE name = :name", nativeQuery = true)
+    Double getAreaSizeInSquareMeters(@org.springframework.data.repository.query.Param("name") String name);
 }

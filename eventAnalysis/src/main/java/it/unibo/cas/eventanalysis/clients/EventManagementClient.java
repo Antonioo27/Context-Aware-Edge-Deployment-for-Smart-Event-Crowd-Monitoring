@@ -4,6 +4,7 @@ import it.unibo.cas.eventanalysis.models.DTOs.AnalysisStatsDTO;
 import it.unibo.cas.eventanalysis.models.entities.Alert;
 import it.unibo.cas.eventanalysis.models.entities.AnalysisStats;
 import it.unibo.cas.eventanalysis.models.entities.Area;
+import it.unibo.cas.eventanalysis.config.AnalysisProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +18,8 @@ public class EventManagementClient {
     private final RestTemplate restTemplate;
 
     @Autowired
-    private Area area;
+    private AnalysisProperties properties;
+
     public EventManagementClient() {
         this.restTemplate = new RestTemplate();
     }
@@ -42,7 +44,7 @@ public class EventManagementClient {
     public double getM2(String area_id) {
         String url = eventManagementApiUrl + "/api/event/area/" + area_id + "/m2";
         try {
-            ResponseEntity<Integer> response = restTemplate.getForEntity(url, Integer.class);
+            ResponseEntity<Double> response = restTemplate.getForEntity(url, Double.class);
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 throw new RuntimeException(
                         "Error occurs while try retrive information: " + response.getStatusCode());
@@ -60,8 +62,7 @@ public class EventManagementClient {
         String url = eventManagementApiUrl + "/api/event/area/analysis";
         try {
             restTemplate.postForEntity(url, analysisStats, String.class);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException("Error occurs while try to comunicate with EventManagement: " + e.getMessage(),
                     e);
         }
@@ -69,11 +70,10 @@ public class EventManagementClient {
 
     public void sendAlert(Alert alert) {
         // todo: complete the rest api requests
-        String url = eventManagementApiUrl + "/api/event/"+ area.id()  +"/alert";
+        String url = eventManagementApiUrl + "/api/event/" + properties.areaId() + "/alert";
         try {
             restTemplate.postForEntity(url, alert, String.class);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException("Error occurs while try to comunicate with EventManagement: " + e.getMessage(),
                     e);
         }

@@ -122,6 +122,7 @@ public class RunningService {
                             .node(kubernetesService.getNodeName())
                             .area_id(area.id())
                             .ts(OffsetDateTime.now())
+                            .window_seconds(analysisService.getWindowSize())
                             .trend(analysisStats.getTrend())
                             .served_by("analysis-" + area.id())
                             .estimatedPeople(analysisStats.getEstimatedPeople())
