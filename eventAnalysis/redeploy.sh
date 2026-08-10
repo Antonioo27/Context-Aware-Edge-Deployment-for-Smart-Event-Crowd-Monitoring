@@ -24,11 +24,22 @@ minikube image load event-analysis:latest -p edge-cluster
 
 # 4. Aggiornamento immagine sui Deployment di analisi attivi
 echo "4/4 Aggiornamento dei Pod di analisi attivi..."
-if kubectl get deployment -l app=event-analysis 2>/dev/null | grep -q event-analysis; then
-  kubectl set image deployment -l app=event-analysis analysis=${IMAGE_NAME}
-  kubectl rollout status deployment -l app=event-analysis --timeout=90s
+
+# Recupera tutti i deployment attivi che iniziano con event-analysis-
+DEPLOYMENTS=$(kubectl get deployment -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep '^event-analysis-' || true)
+
+if [ -n "$DEPLOYMENTS" ]; then
+  for dep in $DEPLOYMENTS; do
+    echo "Aggiornamento container 'analysis' per $dep a ${IMAGE_NAME}..."
+    kubectl set image deployment/$dep analysis=${IMAGE_NAME}
+  done
+
+  echo "Attesa del completamento del rollout..."
+  for dep in $DEPLOYMENTS; do
+    kubectl rollout status deployment/$dep --timeout=90s
+  done
 else
-  echo "Nessun Pod di analisi attivo al momento. Le nuove aree usera' il nuovo tag."
+  echo "Nessun Pod di analisi attivo al momento. Le nuove aree useranno il nuovo tag."
 fi
 
 echo "========================================="

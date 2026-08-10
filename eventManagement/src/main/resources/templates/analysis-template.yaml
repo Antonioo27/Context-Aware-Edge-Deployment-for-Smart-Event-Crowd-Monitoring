@@ -17,7 +17,7 @@ spec:
       serviceAccountName: event-management-sa
       containers:
       - name: analysis
-        image: event-analysis:v2
+        image: event-analysis:latest
         imagePullPolicy: Never
         env:
         - name: AREA_ID

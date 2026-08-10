@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
 
 import java.io.IOException;
 import java.util.List;
@@ -92,5 +93,23 @@ public class AreaController {
         }
         analysisService.addAnalysis(analysisStats);
         return ResponseEntity.ok("Analysis got with success");
+    }
+
+    @PostMapping("area/alert") 
+    public ResponseEntity<String> receiveAlert(@RequestBody AlertDTO alertDTO) {
+        if (alertDTO == null) {
+            logger.error("ALERT RICEVUTO MA NULL");
+            return ResponseEntity.badRequest().body("Alert object is null");
+        }
+
+        logger.warn("🚨 [ALERT RICEVUTO] Area: {} | Ora: {} | Causa: {}",
+                alertDTO.getArea_id(),
+                alertDTO.getTs(),
+                alertDTO.getCause());
+
+        // Eventuale salvataggio a DB tramite analysisService / alertService
+        // analysisService.saveAlert(alertDTO);
+
+        return ResponseEntity.ok("Alert ricevuto con successo dal Backend");
     }
 }

@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 @Service
 public class AlertService {
@@ -27,19 +28,25 @@ public class AlertService {
      *         {@code null} otherwise
      */
     public Alert checkAlerts(AnalysisHistory analysisHistory) {
-        int count_hr = 0;
-        for (AnalysisStats analysisStats : analysisHistory.getAnalysisStats()) {
-            if (analysisStats.getTrend() == Trend.HIGHLY_RISING)
-                count_hr++;
-        }
-        if (count_hr > 3)
+        List<AnalysisStats> stats = analysisHistory.getAnalysisStats();
+        if(stats.size() < 5) 
+            return null;
+
+        List<AnalysisStats> recentStats = stats.subList(stats.size() - 5, stats.size());
+        
+        long count_hr = recentStats.stream()
+                        .filter(s -> s.getTrend() == Trend.HIGHLY_RISING)
+                        .count();
+
+        if (count_hr > 3) {
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())
                     .cause("The trend of the crowd is highly rising in this area")
                     .build();
-        else
-            return null;
+        }
+        
+        return null;
     }
 
     /**

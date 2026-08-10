@@ -89,13 +89,13 @@ class SimConfig:
     Configurazione globale del simulatore
     """
 
-    n_people: int = 5000
+    n_people: int = 8000
 
     # Passo del modello a flussi. Il tempo scorre 1:1 con la realtà
     tick_seconds: float = 1.0
 
     # Durata totale della simulazione in secondi 
-    duration_seconds: int = 600
+    duration_seconds: int = 900
 
     # Emissione probe
     probe_interval_mean: float = 25.0

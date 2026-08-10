@@ -20,11 +20,11 @@ public class AnalysisService {
     @Value("${eventanalysis.analysis.mean-exp-int:25}")
     private int mean;
 
-    @Value("${eventanalysis.analysis.trend-max-stable-angle:10}")
-    private int trend_stable;
+    @Value("${eventanalysis.analysis.trend-max-stable-angle:1.0}")
+    private double trend_stable;
 
-    @Value("${eventanalysis.analysis.trend-highly-angle:45}")
-    private int trend_highly;
+    @Value("${eventanalysis.analysis.trend-highly-angle:2.5}")
+    private double trend_highly;
 
     @Autowired
     private Area area;
@@ -102,13 +102,16 @@ public class AnalysisService {
      * @return the trend of the crowd density
      */
     public Trend calculateTrend(List<AnalysisStats> previousStats) {
-        if (previousStats.size() < 5) {
+        if (previousStats== null || previousStats.size() < 3) {
             return Trend.NOT_ENOUGH_VALUES;
         }
 
+        int n = Math.min(previousStats.size(), 5);
+        List<AnalysisStats> recent = previousStats.subList(previousStats.size() - n, previousStats.size());
+
         // Perform linear regression on the last 5 values to find the slope
         // Calculate the slope based on density to ensure it's area-independent
-        double slope = getSlope(previousStats);
+        double slope = getSlope(recent);
 
         return getTrend(slope);
     }
@@ -140,10 +143,7 @@ public class AnalysisService {
         double sumX2 = 0;
 
         for (int i = 0; i < n; i++) {
-            // Using indices 1, 2, 3, 4, 5 as x (time) values
-            double x = i + 1;
-            // Using density (people/m2) instead of estimatedPeople for a fair comparison
-            // across areas
+            double x = i;
             double y = statsList.get(i).getDensity();
 
             sumX += x;
