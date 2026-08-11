@@ -194,6 +194,7 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
     public void onMessageArrived(String topic, int mid, int qos, byte[] payload) {
         OffsetDateTime receivedAt = OffsetDateTime.now();
         ProbeBatch batch;
+        
         try {
             batch = batchParser.parseBatch(payload, config.areaId(), receivedAt, mid, qos);
         } catch (InvalidBatchException exc) {

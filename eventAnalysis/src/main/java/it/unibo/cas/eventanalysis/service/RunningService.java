@@ -70,11 +70,11 @@ public class RunningService {
     }
 
     private void runLoop() {
-        log.info("Starting analysis area={} | broker {}:{} | topic={}",
-                config.areaId(), config.mqttHost(), config.mqttPort(), config.topicProbes());
+        log.info("[AREA {}] Starting analysis area={} | broker {}:{} | topic={}",
+                area.id(), config.areaId(), config.mqttHost(), config.mqttPort(), config.topicProbes());
 
         if (!subscriber.waitConnected(15, TimeUnit.SECONDS)) {
-            log.warn("Broker unreachable during startup: will keep trying in background");
+            log.warn("[AREA {}] Broker unreachable during startup: will keep trying in background", area.id());
         }
 
         long windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
@@ -84,25 +84,30 @@ public class RunningService {
             ProbeBatch batch = subscriber.get(1, TimeUnit.SECONDS);
 
             if (batch != null) {
-                log.info("batch={} probes={} (declared {}, malformed {}) latency={} ms",
-                        batch.getBatchId(), batch.getCountEffective(), batch.getCountDeclared(),
-                        batch.getMalformedProbes(),
+                int rawProbeCount = batch.getProbes() != null ? batch.getProbes().size() : 0;
+
+                if (!batchService.batchIsLast(batch, lastProcessedBatch)) {
+                    log.warn("[AREA {}] ONE OR MORE BATCHES MISSING! Last batch id: {} - New batch id: {}",
+                            area.id(), lastProcessedBatch != null ? lastProcessedBatch.getBatchId() : "none", batch.getBatchId());
+                }
+
+                // Log dettagliato prima e dopo il filtro RSSI
+                batch = batchService.filterRSSI(batch);
+                int filteredProbeCount = batch.getProbes() != null ? batch.getProbes().size() : 0;
+
+                log.info("[AREA {}] Received Batch id={} | Raw Probes={} | Probes after RSSI filter={} | Latency={} ms",
+                        area.id(), batch.getBatchId(), rawProbeCount, filteredProbeCount,
                         String.format(java.util.Locale.US, "%.1f", batch.getTransportLatencyMs()));
                 
                 subscriber.ack(batch);
-
-                if (!batchService.batchIsLast(batch, lastProcessedBatch))
-                    log.warn("one or more batching missing! Last batch id: {} - New batch id: {}",
-                            lastProcessedBatch != null ? lastProcessedBatch.getBatchId() : "none", batch.getBatchId());
-
-                batch = batchService.filterRSSI(batch);
                 probeBatches.add(batch);
                 lastProcessedBatch = batch;
             }
 
             long now = System.nanoTime();
             if (now >= nextStats) {
-                log.info("Transport stats: {}", subscriber.getStatsSnapshot());
+                log.info("[AREA {}] Window timer expired. Total accumulated batches in window: {}", area.id(), probeBatches.size());
+                log.info("[AREA {}] Transport stats: {}", area.id(), subscriber.getStatsSnapshot());
                 windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
                 nextStats = now + windowNanos;
 
@@ -129,11 +134,13 @@ public class RunningService {
                             .density(analysisStats.getDensity())
                             .build();
 
-                    log.info("Analysis cycle completed! Sending data to EventManagement: {}", analysisStatsDTO);
+                    log.info("[AREA {}] Analysis cycle completed! Sending stats to EventManagement: estimatedPeople={}, density={}, trend={}", 
+                        area.id(), analysisStats.getEstimatedPeople(), analysisStats.getDensity(), analysisStats.getTrend());
+                
                     try {
                         eventManagementClient.sendAnalysis(analysisStatsDTO);
                     } catch (Exception e) {
-                        log.error("Failed to send analysis stats to EventManagement backend: {}", e.getMessage());
+                        log.error("[AREA {}] Failed to send analysis stats to EventManagement backend: {}", area.id(), e.getMessage());
                     }
 
                     // Pulisce la finestra scorrevole per il ciclo successivo
@@ -142,7 +149,7 @@ public class RunningService {
             }
         }
 
-        log.info("Final summary: {}", subscriber.getStatsSnapshot());
+        log.info("[AREA {}] Final summary: {}", area.id(), subscriber.getStatsSnapshot());
     }
     
     private AnalysisStats doAnalysis() {

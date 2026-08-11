@@ -34,6 +34,8 @@ public class BatchService {
      * @return the batch filtered
      */
     public ProbeBatch filterRSSI(ProbeBatch batch) {
+        if (batch == null || batch.getProbes() == null) return batch;
+
         ArrayList<Probe> probes = new ArrayList<>();
         for (Probe probe : batch.getProbes()) {
             if (probe.rssi() > thresholdRssi)

@@ -128,7 +128,8 @@ class ProbePublisher:
         # Buffer per ogni area
         self._buffers: dict[str, list[ProbeEvent]] = {a: [] for a in self._area_ids}
         # Contatore di batch per ogni area
-        self._batch_seq: dict[str, int] = {a: 0 for a in self._area_ids}
+        run_offset = int(time.time())
+        self._batch_seq: dict[str, int] = {a: run_offset for a in self._area_ids}
         # Timer di flush per ogni area
         self._last_flush_sim: dict[str, float] = {a: 0.0 for a in self._area_ids}
 
