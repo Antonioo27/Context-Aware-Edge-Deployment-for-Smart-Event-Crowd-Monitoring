@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import io.fabric8.kubernetes.client.ResourceNotFoundException;
 import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
 
 import java.io.IOException;
@@ -65,9 +67,18 @@ public class AreaController {
     }
 
     @PutMapping("area/{areaId}")
-    public ResponseEntity<String> updateArea(@PathVariable Long areaId, @RequestBody AreaDTO areaDTO) {
-        // TODO
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<Area> updateArea(@PathVariable String areaId, @RequestBody AreaDTO areaDTO) {
+        try {
+            Area updatedArea = areaService.updateArea(areaId, areaDTO);
+            logger.info("Area {} aggiornata con successo tramite REST", areaId);
+            return ResponseEntity.ok(updatedArea);
+        } catch (ResourceNotFoundException e) {
+            logger.error("Impossibile aggiornare: area {} non trovata", areaId);
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            logger.error("Errore durante l'aggiornamento dell'area {}: {}", areaId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     @DeleteMapping("/area/{areaId}")

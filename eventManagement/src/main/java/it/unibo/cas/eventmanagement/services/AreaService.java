@@ -88,4 +88,37 @@ public class AreaService {
     public List<Area> getAllAreas() {
         return areaRepository.findAll();
     }
+
+    @Transactional
+    public Area updateArea(String areaName, AreaDTO areaDTO) {
+        
+        if (areaDTO == null) {
+            throw new IllegalArgumentException("I dati per l'aggiornamento dell'area non possono essere nulli");        
+        }
+
+        Area area = getArea(areaName);
+
+        if (areaDTO.getCapacity() > 0) {
+            area.setCapacity(areaDTO.getCapacity());
+        }
+        if (areaDTO.getBoundary() != null) {
+            area.setBoundary(areaDTO.getBoundary());
+        }
+        if (areaDTO.getType() != null) {
+            area.setType(areaDTO.getType());
+        }
+        if (areaDTO.getPriority() != null) {
+            area.setPriority(areaDTO.getPriority());
+        }
+        if (areaDTO.getName() != null && !areaDTO.getName().trim().isEmpty()) {
+            area.setName(areaDTO.getName());
+        }
+
+        Area updated = areaRepository.save(area);
+        logger.info("Area '{}' aggiornata con successo: nuova capacità={}, priorità={}",
+                areaName, updated.getCapacity(), updated.getPriority());
+        return updated;
+        
+        
+    }
 }

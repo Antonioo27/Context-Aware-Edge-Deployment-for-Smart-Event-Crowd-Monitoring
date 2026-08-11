@@ -100,7 +100,7 @@ def main() -> None:
     ap.add_argument("--live", action="store_true", help="finestra animata dal vivo")
     args = ap.parse_args()
 
-    config = SimConfig()
+    config = SimConfig().from_env()
     area_ids, history = simulate(config)
     plot_lines(area_ids, history)
     if args.live:
