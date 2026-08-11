@@ -120,68 +120,7 @@ class Scenario:
             for dst, w in outs.items():
                 M[i, idx[dst]] += (1.0 - stay) * (w / total)
         return M
- 
-    # @classmethod
-    # def default_fiera(cls, area_ids: list[str]):
-    #     """
-    #     Costruisce il copione di default della fiera:
-    #     riempimento -> picco al palco -> deflusso, piu' un'emergenza.
-    #     """
-    #     present = set(area_ids)
-
-    #     def flows(*triples: tuple[str, str, float]) -> dict[tuple[str, str], float]:
-    #         return {
-    #             (s, d): w
-    #             for (s, d, w) in triples
-    #             if s in present and d in present
-    #         }
-        
-    #     # Arrivo: si entra e ci si disperde verso le attrazioni via corridoio.
-    #     arrivo = cls.build_matrix(area_ids, stay_prob=0.98, flows=flows(
-    #         ("outside", "entrance", 1.0),  
-    #         ("entrance", "corridor", 1.0),
-    #         ("corridor", "stand", 2.0),
-    #         ("corridor", "food",  1.5),
-    #         ("corridor", "stage", 1.5),
-    #         ("stand", "corridor", 1.0),
-    #         ("food",  "corridor", 1.0),
-    #     ), stay_by_area={"outside": 0.90, "corridor": 0.55, "entrance": 0.60})
-
-
-    #     # Concerto: tutti convergono al palco, che trattiene e si riempie.
-    #     concerto = cls.build_matrix(area_ids, stay_prob=0.99, flows=flows(
-    #         ("entrance", "corridor", 1.0),
-    #         ("stand", "corridor", 1.0),
-    #         ("food",  "corridor", 1.0),
-    #         ("corridor", "stage", 1.0),    # il corridoio incanala verso il palco
-    #     ), stay_by_area={"corridor": 0.40, "entrance": 0.60})    # nessun flusso da stage -> si riempie
-
-    #     # Deflusso: il palco si svuota, la gente si ridistribuisce.
-    #     deflusso = cls.build_matrix(area_ids, stay_prob=0.98, flows=flows(
-    #         ("stage", "corridor", 1.0),
-    #         ("corridor", "food",  1.5),
-    #         ("corridor", "stand", 1.0),
-    #     ), stay_by_area={"corridor": 0.50, "stage": 0.95, "entrance": 0.60})
-
-    #     # Uscita: tutti verso l'uscita via corridoio. exit trattiene -> crush.
-    #     uscita = cls.build_matrix(area_ids, stay_prob=0.98, flows=flows(
-    #         ("stage", "corridor", 1.0),
-    #         ("stand", "corridor", 1.0),
-    #         ("food",  "corridor", 1.0),
-    #         ("entrance", "corridor", 1.0),
-    #         ("corridor", "exit", 1.0),
-    #         ("exit", "outside", 1.0),       # <- scarico verso il serbatoio
-    #     ), stay_by_area={"corridor": 0.50, "stage": 0.92,
-    #                      "stand": 0.95, "food": 0.95, "exit": 0.50, "entrance": 0.60})
-
-    #     phases = [
-    #         Phase("arrivo",   0.0,   150.0, arrivo),
-    #         Phase("concerto", 150.0, 360.0, concerto),
-    #         Phase("deflusso", 360.0, 480.0, deflusso),
-    #         Phase("uscita",   480.0, 600.0, uscita),
-    #     ]
-    #     return cls(area_ids, phases)
-
+    
     @classmethod
     def from_dynamic_areas(cls, areas_config: list):
         """
@@ -215,78 +154,79 @@ class Scenario:
                         flows_dict[(s, t)] = weight
 
         # ==================================================================
-        # FASE 1: ARRIVO E INGRESSO GRADUALE (0s - 180s)
+        # FASE 1: ARRIVO E RAMPA COSTANTE DI INGRESSO (0s - 360s)
+        # Svuotamento fluido e costante di Outside (~18% al minuto)
         # ==================================================================
         arrivo_flows = {}
         connect_groups(outsides, entrances, 3.0, arrivo_flows)
         connect_groups(entrances, hubs, 3.0, arrivo_flows)
-        connect_groups(hubs, sustained + peaks + generics, 1.0, arrivo_flows)
+        connect_groups(hubs, peaks, 5.0, arrivo_flows)             # Convoglia allo Stage
+        connect_groups(hubs, sustained + generics, 1.0, arrivo_flows)
 
         stay_arrivo = {}
-        for out in outsides:  stay_arrivo[out] = 0.990  # Svuotamento fluido di Outside
-        for e in entrances:   stay_arrivo[e]   = 0.940  # ~16s permanenza in Ingress
-        for tr in transits:   stay_arrivo[tr]  = 0.920  # ~12s transito in Corridoio
-        for s in sustained:   stay_arrivo[s]   = 0.980
-        for p in peaks:       stay_arrivo[p]   = 0.985
-        for ex in exits:      stay_arrivo[ex]  = 0.950
+        for out in outsides:  stay_arrivo[out] = 0.9965  # CALIBRATO: Svuota ~18% di Outside al minuto
+        for e in entrances:   stay_arrivo[e]   = 0.9200  # Transito veloce
+        for tr in transits:   stay_arrivo[tr]  = 0.9200  # Transito veloce
+        for s in sustained:   stay_arrivo[s]   = 0.9600
+        for p in peaks:       stay_arrivo[p]   = 0.9970  # Lo Stage cattura la massa in arrivo
+        for ex in exits:      stay_arrivo[ex]  = 0.9500
 
-        m_arrivo = cls.build_matrix(area_ids, stay_prob=0.980, flows=arrivo_flows, stay_by_area=stay_arrivo)
+        m_arrivo = cls.build_matrix(area_ids, stay_prob=0.985, flows=arrivo_flows, stay_by_area=stay_arrivo)
 
         # ==================================================================
-        # FASE 2: CONCERTO MAIN STAGE (180s - 400s) -> Innesca HIGHLY_RISING
+        # FASE 2: PICCO E CONCERTO STAZIONARIO (360s - 550s)
         # ==================================================================
         picco_flows = {}
-        connect_groups(outsides, entrances, 2.0, picco_flows)
-        connect_groups(entrances + sustained + generics, hubs, 3.0, picco_flows)
+        connect_groups(sustained + generics + entrances, hubs, 3.0, picco_flows)
         connect_groups(hubs, peaks, 5.0, picco_flows)
 
         stay_picco = {}
-        for out in outsides:  stay_picco[out] = 0.992
-        for e in entrances:   stay_picco[e]   = 0.900  # Ingresso si svuota
-        for tr in transits:   stay_picco[tr]  = 0.920
-        for s in sustained:   stay_picco[s]   = 0.950  # Food/Stand si svuotano verso lo Stage
-        for p in peaks:       stay_picco[p]   = 0.996  # Stage cattura la massa (~333s di permanenza)
-        for ex in exits:      stay_picco[ex]  = 0.950
+        for out in outsides:  stay_picco[out] = 0.9950
+        for e in entrances:   stay_picco[e]   = 0.9000
+        for tr in transits:   stay_picco[tr]  = 0.9200
+        for s in sustained:   stay_picco[s]   = 0.9500
+        for p in peaks:       stay_picco[p]   = 0.9970
+        for ex in exits:      stay_picco[ex]  = 0.9500
 
         m_picco = cls.build_matrix(area_ids, stay_prob=0.985, flows=picco_flows, stay_by_area=stay_picco)
 
         # ==================================================================
-        # FASE 3: PAUSA SPETTACOLO / FOOD & STAND (400s - 600s)
+        # FASE 3: PAUSA SPETTACOLO / FOOD & STAND (550s - 700s)
         # ==================================================================
         pausa_flows = {}
         connect_groups(peaks, hubs, 4.0, pausa_flows)
         connect_groups(hubs, sustained, 5.0, pausa_flows)
 
         stay_pausa = {}
-        for out in outsides:  stay_pausa[out] = 0.995
-        for e in entrances:   stay_pausa[e]   = 0.900
-        for tr in transits:   stay_pausa[tr]  = 0.920
-        for p in peaks:       stay_pausa[p]   = 0.980  # Lo Stage si svuota
-        for s in sustained:   stay_pausa[s]   = 0.994  # Food e Stand crescono fino a ~1000-1200 pers!
-        for ex in exits:      stay_pausa[ex]  = 0.950
+        for out in outsides:  stay_pausa[out] = 0.9950
+        for e in entrances:   stay_pausa[e]   = 0.9000
+        for tr in transits:   stay_pausa[tr]  = 0.9200
+        for p in peaks:       stay_pausa[p]   = 0.9800
+        for s in sustained:   stay_pausa[s]   = 0.9940
+        for ex in exits:      stay_pausa[ex]  = 0.9500
 
         m_pausa = cls.build_matrix(area_ids, stay_prob=0.985, flows=pausa_flows, stay_by_area=stay_pausa)
 
         # ==================================================================
-        # FASE 4: DEFLUSSO E CODA ALLE USCITE (600s - 750s)
+        # FASE 4: DEFLUSSO E CODA ALLE USCITE (700s - 800s)
         # ==================================================================
         deflusso_flows = {}
         connect_groups(peaks + sustained + generics, hubs, 3.0, deflusso_flows)
         connect_groups(hubs, exits, 4.0, deflusso_flows)
-        connect_groups(exits, outsides, 5.0, deflusso_flows) # Scarico continuo verso Outside
+        connect_groups(exits, outsides, 5.0, deflusso_flows)
 
         stay_deflusso = {}
-        for out in outsides:  stay_deflusso[out] = 1.000
-        for e in entrances:   stay_deflusso[e]   = 0.900
-        for tr in transits:   stay_deflusso[tr]  = 0.900
-        for p in peaks:       stay_deflusso[p]   = 0.940
-        for s in sustained:   stay_deflusso[s]   = 0.940
-        for ex in exits:      stay_deflusso[ex]  = 0.930  # Flusso di ~14s attraverso le uscite
+        for out in outsides:  stay_deflusso[out] = 1.0000
+        for e in entrances:   stay_deflusso[e]   = 0.9000
+        for tr in transits:   stay_deflusso[tr]  = 0.9000
+        for p in peaks:       stay_deflusso[p]   = 0.9400
+        for s in sustained:   stay_deflusso[s]   = 0.9400
+        for ex in exits:      stay_deflusso[ex]  = 0.9300
 
         m_deflusso = cls.build_matrix(area_ids, stay_prob=0.960, flows=deflusso_flows, stay_by_area=stay_deflusso)
 
         # ==================================================================
-        # FASE 5: SGOMBERO FINALE (750s - 900s)
+        # FASE 5: SGOMBERO FINALE (800s - 900s)
         # ==================================================================
         uscita_flows = {}
         connect_groups(exits, outsides, 6.0, uscita_flows)
@@ -294,23 +234,20 @@ class Scenario:
         connect_groups(peaks + sustained, hubs, 3.0, uscita_flows)
 
         stay_uscita = {}
-        for out in outsides:  stay_uscita[out] = 1.000
-        for e in entrances:   stay_uscita[e]   = 0.850
-        for tr in transits:   stay_uscita[tr]  = 0.850
-        for ex in exits:      stay_uscita[ex]  = 0.850
-        for p in peaks:       stay_uscita[p]   = 0.850
-        for s in sustained:   stay_uscita[s]   = 0.850
+        for out in outsides:  stay_uscita[out] = 1.0000
+        for e in entrances:   stay_uscita[e]   = 0.8500
+        for tr in transits:   stay_uscita[tr]  = 0.8500
+        for ex in exits:      stay_uscita[ex]  = 0.8500
+        for p in peaks:       stay_uscita[p]   = 0.8500
+        for s in sustained:   stay_uscita[s]   = 0.8500
 
         m_uscita = cls.build_matrix(area_ids, stay_prob=0.900, flows=uscita_flows, stay_by_area=stay_uscita)
 
-        # ==================================================================
-        # CRONOPROGRAMMA DELLE FASI (900 Secondi = 15 Minuti)
-        # ==================================================================
         phases = [
-            Phase("arrivo",           0.0,   180.0, m_arrivo),
-            Phase("concerto_main",  180.0,   400.0, m_picco),
-            Phase("pausa_food",     400.0,   600.0, m_pausa),
-            Phase("deflusso",       600.0,   750.0, m_deflusso),
-            Phase("uscita",         750.0,   900.0, m_uscita),
+            Phase("arrivo",           0.0,   360.0, m_arrivo),
+            Phase("concerto_main",  360.0,   550.0, m_picco),
+            Phase("pausa_food",     550.0,   700.0, m_pausa),
+            Phase("deflusso",       700.0,   800.0, m_deflusso),
+            Phase("uscita",         800.0,   900.0, m_uscita),
         ]
         return cls(area_ids, phases)

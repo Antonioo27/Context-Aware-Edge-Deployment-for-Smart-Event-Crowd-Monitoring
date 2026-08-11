@@ -89,7 +89,7 @@ class SimConfig:
     Configurazione globale del simulatore
     """
 
-    n_people: int = 8000
+    n_people: int = 5000
 
     # Passo del modello a flussi. Il tempo scorre 1:1 con la realtà
     tick_seconds: float = 1.0

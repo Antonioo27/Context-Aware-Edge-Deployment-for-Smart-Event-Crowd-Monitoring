@@ -38,7 +38,7 @@ public class AlertService {
                         .filter(s -> s.getTrend() == Trend.HIGHLY_RISING)
                         .count();
 
-        if (count_hr > 3) {
+        if (count_hr >= 3) {
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())

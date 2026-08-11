@@ -95,14 +95,14 @@ public class AreaController {
         return ResponseEntity.ok("Analysis got with success");
     }
 
-    @PostMapping("area/alert") 
+    @PostMapping("{areaId}/alert") 
     public ResponseEntity<String> receiveAlert(@RequestBody AlertDTO alertDTO) {
         if (alertDTO == null) {
             logger.error("ALERT RICEVUTO MA NULL");
             return ResponseEntity.badRequest().body("Alert object is null");
         }
 
-        logger.warn("🚨 [ALERT RICEVUTO] Area: {} | Ora: {} | Causa: {}",
+        logger.warn("[ALERT RICEVUTO] Area: {} | Ora: {} | Causa: {}",
                 alertDTO.getArea_id(),
                 alertDTO.getTs(),
                 alertDTO.getCause());
