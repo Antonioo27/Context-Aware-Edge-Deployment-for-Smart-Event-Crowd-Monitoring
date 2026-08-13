@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import it.unibo.cas.eventmanagement.exception.ResourceNotFoundException;
-
+import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.entities.Node;
 import it.unibo.cas.eventmanagement.models.enums.NodeType;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDTO;
@@ -238,6 +238,17 @@ public class NodeService {
             logger.error("Errore durante l'esecuzione della query spaziale PostGIS per le distanze: {}", e.getMessage());
             throw new RuntimeException("Errore nel calcolo delle distanze PostGIS tra Aree e Nodi", e);
         }
+    }
+
+    public String getClosestIdForArea(Area area) {
+        try {            
+            return nodeRepository.findClosestEdgeNodeId(area.getBoundary())
+                            .orElse("node-cloud"); // Fallback sul Cloud se non ci sono nodi Edge
+        } catch (Exception e) {
+            logger.error("Errore durante l'esecuzione della query spaziale PostGIS trovare nodo più vicino ad un'area: {}", e.getMessage());
+            throw new RuntimeException("Errore nel calcolo della ricerca distanza minore nodo area", e);
+        }    
+    
     }
 
     private double calculateIngressLatency(double distanceMeters) {

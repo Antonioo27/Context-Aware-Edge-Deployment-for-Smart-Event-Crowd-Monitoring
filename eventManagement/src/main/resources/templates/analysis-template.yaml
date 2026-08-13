@@ -15,6 +15,8 @@ spec:
         area: [K8S_AREA_ID]
     spec:
       serviceAccountName: event-management-sa
+      nodeSelector:
+        node-id: "[TARGET_NODE_ID]"
       containers:
       - name: analysis
         image: event-analysis:latest

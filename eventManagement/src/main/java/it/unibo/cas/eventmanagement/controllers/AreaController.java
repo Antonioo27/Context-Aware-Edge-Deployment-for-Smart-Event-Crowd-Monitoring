@@ -6,6 +6,8 @@ import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.services.AnalysisService;
 import it.unibo.cas.eventmanagement.services.AreaService;
 import it.unibo.cas.eventmanagement.services.KubernetesOrchestrationService;
+import it.unibo.cas.eventmanagement.services.NodeService;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +30,9 @@ public class AreaController {
     private AnalysisService analysisService;
 
     @Autowired
+    private NodeService nodeService;
+
+    @Autowired
     private AreaService areaService;
     @Autowired
     private KubernetesOrchestrationService kubernetesOrchestrationService;
@@ -36,7 +41,11 @@ public class AreaController {
     public ResponseEntity<String> createArea(@RequestBody AreaDTO areaDTO) {
         Area area = areaService.createArea(areaDTO);
         try {
-            kubernetesOrchestrationService.deployAnalysisForArea(area.getName());
+
+            String targetNodeId = nodeService.getClosestIdForArea(area);
+
+            kubernetesOrchestrationService.deployAnalysisForArea(area.getName(), targetNodeId);
+
             logger.info("Pod di analisi per l'area {} deployato su Kubernetes", area.getName());
             return ResponseEntity.status(HttpStatus.CREATED).body("Area e relativo Pod creati con successo");
         } catch (Exception e) {
