@@ -1,6 +1,9 @@
-package it.unibo.cas.eventmanagement.services;
+package it.unibo.cas.eventmanagement.orchestration;
 
 import io.fabric8.kubernetes.client.KubernetesClientException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -17,19 +20,18 @@ import java.util.Objects;
 
 @Service
 public class KubernetesOrchestrationService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(KubernetesOrchestrationService.class);
+
     @Autowired
     private KubernetesClient client;
 
     public void deployAnalysisForArea(String area_name, String targetNodeId) throws IOException {
-        // Read the template
         String template = new String(
                 Objects.requireNonNull(getClass().getResourceAsStream("/templates/analysis-template.yaml"))
                         .readAllBytes());
 
-        // Sanitize the area name for Kubernetes: only lowercase and
-        // alphanumeric characters
         String sanitizedAreaId = getSanitizedId(area_name);
-
         String nodeToDeploy = (targetNodeId != null && !targetNodeId.isBlank()) ? targetNodeId : "node-cloud";
 
         String finalYaml = template.replace("[K8S_AREA_ID]", sanitizedAreaId)
@@ -37,7 +39,10 @@ public class KubernetesOrchestrationService {
                 .replace("[TARGET_NODE_ID]", nodeToDeploy);
 
         InputStream inputStream = new ByteArrayInputStream(finalYaml.getBytes());
-        client.load(inputStream).serverSideApply();
+        // Metodo moderno e raccomandato da Fabric8
+        client.load(inputStream)
+          .forceConflicts()
+          .serverSideApply();
     }
 
     public Boolean removeAnalysisForArea(String area_name) {
@@ -74,11 +79,17 @@ public class KubernetesOrchestrationService {
                 boolean isReady = node.getStatus().getConditions().stream()
                         .anyMatch(cond -> "Ready".equals(cond.getType()) && "True".equals(cond.getStatus()));
 
-                statusMap.put(nodeId, isReady);
+                // 2. Verifica se il nodo è stato cordonato (unschedulable = true)
+                boolean isUnschedulable = node.getSpec() != null &&
+                    Boolean.TRUE.equals(node.getSpec().getUnschedulable());
+
+                boolean isHealthyAndSchedulable = isReady && !isUnschedulable;
+
+                statusMap.put(nodeId, isHealthyAndSchedulable);
             }
         }
         catch (KubernetesClientException e) {
-
+            System.err.println(" [ORCHESTRATOR] Errore nel recupero dello stato dei nodi: " + e.getMessage());
         }
         return statusMap;
     }
@@ -115,25 +126,55 @@ public class KubernetesOrchestrationService {
         String namespace = client.getNamespace();
 
         try {
+            // Patch JSON mirata: modifica esclusivamente il node-id nel nodeSelector
+            String patchJson = String.format(
+                    "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"node-id\":\"%s\"}}}}}",
+                    targetNodeId
+            );
+
             client.apps().deployments()
-                        .inNamespace(namespace)
-                        .withName(deploymentName)
-                        .edit(d -> new DeploymentBuilder(d)
-                                .editSpec()
-                                    .editTemplate()
-                                        .editSpec()
-                                            .addToNodeSelector("node-id", targetNodeId)
-                                        .endSpec()
-                                    .endTemplate()
-                                .endSpec()
-                                .build());
-                    
-            System.out.println(" [ORCHESTRATOR] Migration initiated for Area '" + areaName + "' -> Node: " + targetNodeId);                    
-            return true;        
-        } catch (KubernetesClientException e) {
-            System.err.println(" [ORCHESTRATOR] Migration failed for Area '" + areaName + "': " + e.getMessage());
+                    .inNamespace(namespace)
+                    .withName(deploymentName)
+                    .patch(patchJson);
+
+            logger.info(" [ORCHESTRATOR] Migrazione applicata con successo su K8s per Area '{}' -> Node: {}", areaName, targetNodeId);
+            return true;
+        } catch (Exception e) {
+            logger.error(" [ORCHESTRATOR] Errore durante la migrazione dell'area '{}' su nodo '{}': {}", areaName, targetNodeId, e.getMessage());
             return false;
         }
     }
 
+    /**
+     * Restituisce una mappa nodeId -> percentuale Utilizzo CPU
+     */
+    public Map<String, Double> getNodeCpuUsagePercentageMap() {
+        Map<String, Double> cpuMap = new HashMap<>();
+        try {
+            var nodeMetricsList = client.top().nodes().metrics();
+            for (var metric : nodeMetricsList.getItems()) {
+                String nodeName = metric.getMetadata().getName();
+
+                var k8sNode = client.nodes().withName(nodeName).get();
+                String nodeId = (k8sNode != null && k8sNode.getMetadata().getLabels().containsKey("node-id"))
+                    ? k8sNode.getMetadata().getLabels().get("node-id")
+                    : nodeName;
+                
+                var usageQuantity = metric.getUsage().get("cpu");
+                double usageMillicores = usageQuantity != null ? usageQuantity.getNumericalAmount().doubleValue() * 1000.0 : 0.0;
+
+                double allocatableMillicores = 2000.0;
+                if (k8sNode != null && k8sNode.getStatus().getAllocatable().containsKey("cpu")) {
+                    allocatableMillicores = k8sNode.getStatus().getAllocatable().get("cpu").getNumericalAmount().doubleValue() * 1000.0;
+                }
+
+                double cpuPercent = (usageMillicores / allocatableMillicores) * 100.0;
+                cpuMap.put(nodeId, Math.min(100.0, Math.round(cpuPercent * 10.0) / 10.0));
+            }
+        } catch (Exception e) {
+            logger.warn(" [METRICS] Metrics server non ancora pronto o non raggiungibile: {}", e.getMessage());
+        }
+        return cpuMap;
+    }
+    
 }

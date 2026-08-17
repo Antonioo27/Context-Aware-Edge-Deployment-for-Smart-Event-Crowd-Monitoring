@@ -251,6 +251,28 @@ public class NodeService {
     
     }
 
+    public double getIngressLatency(Area area, String nodeId) {
+        // 1. Caso Nodo Cloud -> Latenza WAN fissa
+        if ("node-cloud".equals(nodeId) || nodeId.toLowerCase().contains("cloud")) {
+            return 40.0;
+        }
+
+        try {
+            // 2. Query PostGIS diretta per distanza tra area Name e nodeId
+            Double distanceMeters = nodeRepository.findDistanceBetweenAreaAndNode(area.getName(), nodeId);
+            
+            if (distanceMeters != null) {
+                return calculateIngressLatency(distanceMeters);
+            }
+        } catch (Exception e) {
+            logger.error("Errore nel calcolo della latenza di ingresso per Area '{}' e Nodo '{}': {}", 
+                    area.getName(), nodeId, e.getMessage());
+        }
+
+        // Fallback di sicurezza se la query o l'area fallisce
+        return 3.0; // Latenza base locale
+    }
+
     private double calculateIngressLatency(double distanceMeters) {
         // Modello spaziale per il calcolo della latenza : L_base(3ms) + fattore di rete proporzionale alla distanza
         double km = distanceMeters / 1000.0;
