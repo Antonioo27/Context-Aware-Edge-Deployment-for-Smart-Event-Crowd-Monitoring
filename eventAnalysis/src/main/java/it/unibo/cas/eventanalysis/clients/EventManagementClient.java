@@ -70,7 +70,7 @@ public class EventManagementClient {
 
     public void sendAlert(Alert alert) {
         // todo: complete the rest api requests
-        String url = eventManagementApiUrl + "/api/event/" + properties.areaId() + "/alert";
+        String url = eventManagementApiUrl + "/api/event/area/alert";
         try {
             restTemplate.postForEntity(url, alert, String.class);
         } catch (Exception e) {

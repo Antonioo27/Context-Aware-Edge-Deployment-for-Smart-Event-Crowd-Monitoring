@@ -48,7 +48,7 @@ public class Area {
     private Polygon boundary;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "event_id") // Questa è la Foreign Key nella tabella areas
+    @JoinColumn(name = "event_id")
     @JsonIgnore
     private Event event;
 }

@@ -1,11 +1,13 @@
 package it.unibo.cas.eventmanagement.models.entities;
 
 import it.unibo.cas.eventmanagement.models.enums.Trend;
+import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.time.OffsetDateTime;
 
+@Entity
+@Table(name = "analysis_stats")
 @Data
 @Getter
 @Builder
@@ -13,13 +15,27 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @ToString
 public class AnalysisStats {
-    private String area_id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "analysis_id")
+    private Long id;
+
+    @Column(name = "area_name")
+    private String areaId;
+
     private OffsetDateTime ts;
-    private int window_seconds;
+
+    @Column(name = "window_seconds")
+    private int windowSeconds;
+
+    @Column(name = "estimated_people")
     private long estimatedPeople;
+
     private Trend trend;
-    private String served_by;
+
+    @Column(name = "served_by")
+    private String servedBy;
+
     private double density;
     private String node;
-
 }
