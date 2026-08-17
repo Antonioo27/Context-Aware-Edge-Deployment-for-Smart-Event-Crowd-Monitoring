@@ -91,14 +91,67 @@ spec:
         - containerPort: 8080
         env:
         - name: SPRING_DATASOURCE_URL
-          value: "jdbc:postgresql://postgis-svc:5432/event_management"
+        - name: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
+              optional: true
+        - name: EVENTANALYSIS_ANALYSIS_TREND_MIN_STABLE_ANGLE
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_TREND_MIN_STABLE_ANGLE
+              optional: true
+        - name: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
+              optional: true
+        - name: EVENTANALYSIS_ANALYSIS_TREND_MIN_STABLE_ANGLE
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_TREND_MIN_STABLE_ANGLE
+              optional: true
         - name: SPRING_DATASOURCE_USERNAME
-          value: "postgres"
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: SPRING_DATASOURCE_USERNAME
+              optional: true
         - name: SPRING_DATASOURCE_PASSWORD
-          value: "postgres"
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: SPRING_DATASOURCE_PASSWORD
+              optional: true
         - name: MQTT_BROKER_URL
-          value: "tcp://mosquitto-svc:1883"
----
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: MQTT_BROKER_URL
+              optional: true
+        - name: EVENTMANAGEMENT_ANALYSIS_CRITICAL_THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTMANAGEMENT_ANALYSIS_CRITICAL_THRESHOLD
+              optional: true
+        - name: EVENTMANAGEMENT_ANALYSIS_HIGH_THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTMANAGEMENT_ANALYSIS_HIGH_THRESHOLD
+              optional: true
+        - name: EVENTMANAGEMENT_ANALYSIS_MEDIUM_THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTMANAGEMENT_ANALYSIS_MEDIUM_THRESHOLD
+              optional: true
+
 # 7. Service NodePort per accesso esterno
 apiVersion: v1
 kind: Service

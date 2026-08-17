@@ -3,6 +3,7 @@ package it.unibo.cas.eventmanagement.services;
 import it.unibo.cas.eventmanagement.models.DTOs.AreaDTO;
 import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.entities.Event;
+import it.unibo.cas.eventmanagement.models.enums.State;
 import it.unibo.cas.eventmanagement.repositories.AreaRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,11 +44,12 @@ public class AreaService {
                 .capacity(areaDTO.getCapacity())
                 .type(areaDTO.getType())
                 .priority(areaDTO.getPriority())
+                .state(State.NONE)
                 .build();
 
         Event event = eventService.getEvent();
         event.addArea(area);
-        
+
         Area saved = areaRepository.save(area);
         logger.info("Area creata con successo: name={}, capacity={}", saved.getName(), saved.getCapacity());
         return saved;
@@ -91,9 +93,9 @@ public class AreaService {
 
     @Transactional
     public Area updateArea(String areaName, AreaDTO areaDTO) {
-        
+
         if (areaDTO == null) {
-            throw new IllegalArgumentException("I dati per l'aggiornamento dell'area non possono essere nulli");        
+            throw new IllegalArgumentException("I dati per l'aggiornamento dell'area non possono essere nulli");
         }
 
         Area area = getArea(areaName);
@@ -118,7 +120,16 @@ public class AreaService {
         logger.info("Area '{}' aggiornata con successo: nuova capacità={}, priorità={}",
                 areaName, updated.getCapacity(), updated.getPriority());
         return updated;
-        
-        
+
+    }
+
+    public String getAreaByCoords(double lon, double lat) {
+        return areaRepository.getAreaByCoords(lon, lat);
+    }
+
+    public void setAreaState(State state, String areaName) {
+        Area area = areaRepository.getAreaByName(areaName);
+        area.setState(state);
+        areaRepository.save(area);
     }
 }

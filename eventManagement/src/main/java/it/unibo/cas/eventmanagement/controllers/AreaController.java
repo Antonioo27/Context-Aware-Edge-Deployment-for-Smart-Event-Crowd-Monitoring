@@ -16,9 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import io.fabric8.kubernetes.client.ResourceNotFoundException;
-import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
-
-import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -107,29 +104,29 @@ public class AreaController {
     }
 
     @PostMapping("area/analysis")
-    public ResponseEntity<String> sendAnalysis(@RequestBody AnalysisStats analysisStats) {
-        if (analysisStats == null) {
+    public ResponseEntity<String> sendAnalysis(@RequestBody it.unibo.cas.eventmanagement.models.DTOs.AnalysisStatsDTO analysisStatsDTO) {
+        if (analysisStatsDTO == null) {
             return ResponseEntity.badRequest().body("Area statistical analysis is null");
         }
-        analysisService.addAnalysis(analysisStats);
-        return ResponseEntity.ok("Analysis got with success");
-    }
+        try {
+            AnalysisStats analysisStats = AnalysisStats.builder()
+                    .areaId(analysisStatsDTO.getArea_id())
+                    .ts(analysisStatsDTO.getTs())
+                    .windowSeconds(analysisStatsDTO.getWindow_seconds() != null ? analysisStatsDTO.getWindow_seconds() : 0)
+                    .estimatedPeople(analysisStatsDTO.getEstimatedPeople() != null ? analysisStatsDTO.getEstimatedPeople() : 0L)
+                    .trend(analysisStatsDTO.getTrend())
+                    .servedBy(analysisStatsDTO.getServed_by())
+                    .density(analysisStatsDTO.getDensity() != null ? analysisStatsDTO.getDensity() : 0.0)
+                    .node(analysisStatsDTO.getNode())
+                    .build();
 
-    @PostMapping("{areaId}/alert") 
-    public ResponseEntity<String> receiveAlert(@RequestBody AlertDTO alertDTO) {
-        if (alertDTO == null) {
-            logger.error("ALERT RICEVUTO MA NULL");
-            return ResponseEntity.badRequest().body("Alert object is null");
+            if (analysisService.addAnalysis(analysisStats) != null)
+                return ResponseEntity.ok("Analysis got with success");
+            else
+                return ResponseEntity.badRequest().body("Analysis got with error");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
-
-        logger.warn("[ALERT RICEVUTO] Area: {} | Ora: {} | Causa: {}",
-                alertDTO.getArea_id(),
-                alertDTO.getTs(),
-                alertDTO.getCause());
-
-        // Eventuale salvataggio a DB tramite analysisService / alertService
-        // analysisService.saveAlert(alertDTO);
-
-        return ResponseEntity.ok("Alert ricevuto con successo dal Backend");
     }
+
 }

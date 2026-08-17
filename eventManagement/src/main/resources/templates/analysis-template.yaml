@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: event-analysis-[K8S_AREA_ID]
+  labels:
+    app: event-analysis
 spec:
   replicas: 1
   selector:

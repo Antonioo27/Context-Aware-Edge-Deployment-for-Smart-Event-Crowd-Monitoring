@@ -1,7 +1,9 @@
 package it.unibo.cas.eventmanagement.models.DTOs;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import it.unibo.cas.eventmanagement.models.enums.AreaType;
 import it.unibo.cas.eventmanagement.models.enums.Priority;
+import it.unibo.cas.eventmanagement.models.enums.State;
 import it.unibo.cas.eventmanagement.utils.PolygonDeserializer;
 import it.unibo.cas.eventmanagement.utils.PolygonSerializer;
 import lombok.AllArgsConstructor;
@@ -17,11 +19,13 @@ import org.locationtech.jts.geom.Polygon;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AreaDTO {
     private String name;
-    private int capacity;
+    private Integer capacity;
     private Priority priority;
     private AreaType type;
+    private State state;
     
     @JsonSerialize(using = PolygonSerializer.class)
     @JsonDeserialize(using = PolygonDeserializer.class)
