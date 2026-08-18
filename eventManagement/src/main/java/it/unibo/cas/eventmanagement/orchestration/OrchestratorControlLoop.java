@@ -19,6 +19,7 @@ import it.unibo.cas.eventmanagement.models.enums.OrchestrationPolicy;
 import it.unibo.cas.eventmanagement.models.enums.Priority;
 import it.unibo.cas.eventmanagement.models.enums.State;
 import it.unibo.cas.eventmanagement.repositories.AreaRepository;
+import it.unibo.cas.eventmanagement.services.MigrationService;
 import it.unibo.cas.eventmanagement.services.NodeService;
 
 @Component
@@ -37,6 +38,9 @@ public class OrchestratorControlLoop {
 
     @Autowired
     private KubernetesOrchestrationService kubernetesOrchestrationService;
+
+    @Autowired
+    private MigrationService migrationService;
 
     @Autowired
     private AreaRepository areaRepository;
@@ -204,12 +208,42 @@ public class OrchestratorControlLoop {
             if (!bestNode.equals(currentNode)) {
                 logger.info(" [ORCHESTRATOR] Migrazione decisa per Area '{}': {} -> {} (Costo attuale: {}, Nuovo costo: {})",
                         area.getName(), currentNode, bestNode, String.format("%.2f", currentCost), String.format("%.2f", minCost));
-
+                        
                 boolean success = kubernetesOrchestrationService.migratePodToNode(area.getName(), bestNode);
+                
+                String reason;
+                if(!currentNodeIsHealthy) {
+                    reason = String.format("Failover: Node '%s' is NOT READY / Offline", currentNode);
+                } else if(isCurrentNodeOverloaded) {
+                    reason = String.format("Overload Avoidance: Node '%s' CPU at %.1f%% (> %.0f%%)", 
+                                           currentNode, currentCpu, CPU_OVERLOAD_THRESHOLD);
+                } else {
+                    double delta = currentCost - minCost;
+                    reason = String.format("Context-Aware Cost Optimization (Cost: %.2f -> %.2f | Saving: %.2f)",
+                                           currentCost, minCost, delta);
+                }
+
+                String sanitizedAreaId = area.getName().toLowerCase().replaceAll("[^a-z0-9-]", "-");
+                migrationService.recordMigration(
+                    area.getName(),
+                    "event-analysis-" + sanitizedAreaId,
+                    currentNode != null ? currentNode : "unknown",
+                    bestNode,
+                    currentCost != Double.MAX_VALUE ? currentCost : null,
+                    minCost,
+                    reason,
+                    success,
+                    success ? null : "Failed to patch K8s deployment"
+                );
+
                 if (success) {
                     // Aggiorna bilanciamento locale
-                    if (nodePodCount.containsKey(currentNode)) nodePodCount.put(currentNode, nodePodCount.get(currentNode) - 1);
-                    if (nodePodCount.containsKey(bestNode)) nodePodCount.put(bestNode, nodePodCount.get(bestNode) + 1);
+                    if (nodePodCount.containsKey(currentNode)) {
+                        nodePodCount.put(currentNode, nodePodCount.get(currentNode) - 1);
+                    }
+                    if (nodePodCount.containsKey(bestNode)) {
+                        nodePodCount.put(bestNode, nodePodCount.get(bestNode) + 1);
+                    }
 
                     // Se la migrazione è dovuta a sovraccarico, blocchiamo ulteriori spostamenti da questo nodo per questo tick
                     if (isCurrentNodeOverloaded) {
