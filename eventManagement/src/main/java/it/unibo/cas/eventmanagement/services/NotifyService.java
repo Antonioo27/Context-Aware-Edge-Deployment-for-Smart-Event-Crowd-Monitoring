@@ -26,7 +26,7 @@ public class NotifyService {
     public void notifyAutomaticAlert(Alert alert) {
         Area area = areaService.getArea(alert.getAreaId());
         String message = "Alta densità di persone nell'area " + alert.getAreaId();
-        
+
         String userMessage = "";
         String operatorMessage = "";
         String organizerMessage = "";
@@ -41,7 +41,8 @@ public class NotifyService {
             case ENTRANCE:
                 userMessage = message + ". Si prega di rispettare la coda e i controlli.";
                 operatorMessage = message + ". Fa rispettare la fila agli utenti.";
-                organizerMessage = message + ". Valutare l'assegnazione di maggiori operatori alla sezione di Entrata all'Evento";
+                organizerMessage = message
+                        + ". Valutare l'assegnazione di maggiori operatori alla sezione di Entrata all'Evento";
                 break;
             case EXIT:
                 userMessage = message + ". Si prega di non ammassarsi e non spingere.";
@@ -62,31 +63,43 @@ public class NotifyService {
                 break;
         }
 
+        Priority priority = area.getPriority();
+
         if (!userMessage.isEmpty()) {
-            createNotification(alert, UserType.USER, userMessage);
-            createNotification(alert, UserType.OPERATOR, operatorMessage);
-            createNotification(alert, UserType.ORGANIZER, organizerMessage);
+            createNotification(alert, UserType.USER, userMessage, priority);
+            createNotification(alert, UserType.OPERATOR, operatorMessage, priority);
+            createNotification(alert, UserType.ORGANIZER, organizerMessage, priority);
         }
     }
 
     public void notifyManualAlert(Alert alert) {
         String baseMessage = "Allerta manuale segnalata";
+        Priority priority = null;
         if (alert.getAreaId() != null && !alert.getAreaId().isEmpty()) {
             baseMessage += " in area " + alert.getAreaId();
+            try {
+                Area area = areaService.getArea(alert.getAreaId());
+                if (area != null) {
+                    priority = area.getPriority();
+                }
+            } catch (Exception e) {
+                throw new IllegalArgumentException(e.getMessage());
+            }
         }
         if (alert.getCause() != null && !alert.getCause().isEmpty()) {
             baseMessage += " (causa: " + alert.getCause() + ")";
         }
 
-        createNotification(alert, UserType.OPERATOR, baseMessage + ". Si prega di verificare la situazione.");
-        createNotification(alert, UserType.ORGANIZER, baseMessage + ". Valutare possibili interventi o riorganizzazioni.");
+        createNotification(alert, UserType.OPERATOR, baseMessage + ". Si prega di verificare la situazione.", priority);
+        createNotification(alert, UserType.ORGANIZER, baseMessage + ". Valutare possibili interventi o riorganizzazioni.", priority);
     }
 
-    private void createNotification(Alert alert, UserType targetUser, String message) {
+    private void createNotification(Alert alert, UserType targetUser, String message, Priority priority) {
         Notification notification = Notification.builder()
                 .alert(alert)
                 .targetUser(targetUser)
                 .message(message)
+                .priority(priority)
                 .build();
         notificationRepository.save(notification);
     }
@@ -95,24 +108,10 @@ public class NotifyService {
         List<Notification> list = notificationRepository.findByTargetUser(userType);
         List<NotifyDTO> listDTO = new ArrayList<>();
         for (Notification notification : list) {
-            Priority priority = null;
-            if (userType == UserType.OPERATOR || userType == UserType.ORGANIZER) {
-                try {
-                    if (notification.getAlert() != null && notification.getAlert().getAreaId() != null) {
-                        Area area = areaService.getArea(notification.getAlert().getAreaId());
-                        if (area != null) {
-                            priority = area.getPriority();
-                        }
-                    }
-                } catch (Exception e) {
-                    // Ignore missing area
-                }
-            }
-            
             listDTO.add(NotifyDTO.builder()
                     .message(notification.getMessage())
                     .alert(notification.getAlert())
-                    .priority(priority)
+                    .priority(notification.getPriority())
                     .build());
         }
         return listDTO;

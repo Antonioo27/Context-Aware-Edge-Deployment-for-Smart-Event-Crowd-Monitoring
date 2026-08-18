@@ -102,31 +102,4 @@ public class AreaController {
                     .body("Area rimossa dal DB ma errore durante la cancellazione del Pod Kubernetes");
         }
     }
-
-    @PostMapping("area/analysis")
-    public ResponseEntity<String> sendAnalysis(@RequestBody it.unibo.cas.eventmanagement.models.DTOs.AnalysisStatsDTO analysisStatsDTO) {
-        if (analysisStatsDTO == null) {
-            return ResponseEntity.badRequest().body("Area statistical analysis is null");
-        }
-        try {
-            AnalysisStats analysisStats = AnalysisStats.builder()
-                    .areaId(analysisStatsDTO.getArea_id())
-                    .ts(analysisStatsDTO.getTs())
-                    .windowSeconds(analysisStatsDTO.getWindow_seconds() != null ? analysisStatsDTO.getWindow_seconds() : 0)
-                    .estimatedPeople(analysisStatsDTO.getEstimatedPeople() != null ? analysisStatsDTO.getEstimatedPeople() : 0L)
-                    .trend(analysisStatsDTO.getTrend())
-                    .servedBy(analysisStatsDTO.getServed_by())
-                    .density(analysisStatsDTO.getDensity() != null ? analysisStatsDTO.getDensity() : 0.0)
-                    .node(analysisStatsDTO.getNode())
-                    .build();
-
-            if (analysisService.addAnalysis(analysisStats) != null)
-                return ResponseEntity.ok("Analysis got with success");
-            else
-                return ResponseEntity.badRequest().body("Analysis got with error");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
 }

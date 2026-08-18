@@ -90,18 +90,11 @@ spec:
         ports:
         - containerPort: 8080
         env:
-        - name: SPRING_DATASOURCE_URL
-        - name: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
+        - name: POSTGRES_URL
           valueFrom:
             configMapKeyRef:
               name: event-analysis-config
-              key: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
-              optional: true
-        - name: EVENTANALYSIS_ANALYSIS_TREND_MIN_STABLE_ANGLE
-          valueFrom:
-            configMapKeyRef:
-              name: event-analysis-config
-              key: EVENTANALYSIS_ANALYSIS_TREND_MIN_STABLE_ANGLE
+              key: POSTGRES_URL
               optional: true
         - name: EVENTANALYSIS_ANALYSIS_TREND_MAX_STABLE_ANGLE
           valueFrom:
@@ -115,17 +108,17 @@ spec:
               name: event-analysis-config
               key: EVENTANALYSIS_ANALYSIS_TREND_MIN_STABLE_ANGLE
               optional: true
-        - name: SPRING_DATASOURCE_USERNAME
+        - name: POSTGRES_USER
           valueFrom:
             configMapKeyRef:
               name: event-analysis-config
-              key: SPRING_DATASOURCE_USERNAME
+              key: POSTGRES_USER
               optional: true
-        - name: SPRING_DATASOURCE_PASSWORD
+        - name: POSTGRES_PASSWORD
           valueFrom:
             configMapKeyRef:
               name: event-analysis-config
-              key: SPRING_DATASOURCE_PASSWORD
+              key: POSTGRES_PASSWORD
               optional: true
         - name: MQTT_BROKER_URL
           valueFrom:
@@ -151,6 +144,20 @@ spec:
               name: event-analysis-config
               key: EVENTMANAGEMENT_ANALYSIS_MEDIUM_THRESHOLD
               optional: true
+        - name: EVENTMANAGEMENT_ANALYSIS_PREDICTION_HORIZON_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTMANAGEMENT_ANALYSIS_PREDICTION_HORIZON_MINUTES
+              optional: true
+        - name: EVENTMANAGEMENT_ANALYSIS_PREDICTION_WINDOW_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTMANAGEMENT_ANALYSIS_PREDICTION_WINDOW_MINUTES
+              optional: true
+
+---
 
 # 7. Service NodePort per accesso esterno
 apiVersion: v1

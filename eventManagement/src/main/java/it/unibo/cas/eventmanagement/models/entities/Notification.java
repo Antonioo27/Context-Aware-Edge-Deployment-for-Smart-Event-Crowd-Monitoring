@@ -3,7 +3,7 @@ package it.unibo.cas.eventmanagement.models.entities;
 import jakarta.persistence.*;
 import lombok.*;
 import it.unibo.cas.eventmanagement.models.enums.UserType;
-
+import it.unibo.cas.eventmanagement.models.enums.Priority;
 @Entity
 @Table(name = "notifications")
 @Data
@@ -27,4 +27,7 @@ public class Notification {
     private UserType targetUser;
 
     private String message;
+
+    @Enumerated(EnumType.STRING)
+    private Priority priority;
 }
