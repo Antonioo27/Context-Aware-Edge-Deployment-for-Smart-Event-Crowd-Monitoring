@@ -116,13 +116,9 @@ public class RunningService {
 
                     Alert alert = alertService.checkAlerts(analysisHistory);
                     if (alert != null) {
-                        // Rate limiting alert: attende almeno 3 finestre temporali prima del successivo invio
-                        if (lastAlertNanos == 0 || (now - lastAlertNanos) >= 3 * windowNanos) {
-                            alertService.sendAlert(alert);
-                            lastAlertNanos = now;
-                        }
+                        alertService.sendAlert(alert);
                     }
-
+                    
                     AnalysisStatsDTO analysisStatsDTO = AnalysisStatsDTO.builder()
                             .node(kubernetesService.getNodeName())
                             .area_id(area.id())

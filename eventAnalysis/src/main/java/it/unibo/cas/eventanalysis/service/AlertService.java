@@ -29,22 +29,29 @@ public class AlertService {
      */
     public Alert checkAlerts(AnalysisHistory analysisHistory) {
         List<AnalysisStats> stats = analysisHistory.getAnalysisStats();
-        if(stats.size() < 5) 
+        if(stats == null || stats.isEmpty()) 
             return null;
 
-        List<AnalysisStats> recentStats = stats.subList(stats.size() - 5, stats.size());
-        
-        long count_hr = recentStats.stream()
-                        .filter(s -> s.getTrend() == Trend.HIGHLY_RISING)
-                        .count();
+        int consecutiveHighlyRising = 0;
+        for (int i = stats.size() - 1; i >= 0; i--) {
+            AnalysisStats stat = stats.get(i);
+            if (stat.getTrend() == Trend.HIGHLY_RISING) {
+                consecutiveHighlyRising++;
+            } else {
+                // La sequenza consecutiva si interrompe
+                break;
+            }
+        }
 
-        if (count_hr >= 3) {
+        // Scatta l'alert al 3°, 4°, 5°... HIGHLY_RISING consecutivo
+        if (consecutiveHighlyRising >= 3) {
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())
-                    .cause("The trend of the crowd is highly rising in this area")
+                    .cause("The trend of the crowd is highly rising in this area (consecutive: " + consecutiveHighlyRising + ")")
                     .build();
         }
+        
         
         return null;
     }

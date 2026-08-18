@@ -31,6 +31,11 @@ public class NodeService {
     
     private static final Logger logger = LoggerFactory.getLogger(NodeService.class);
 
+    private static final double BASE_EDGE_LATENCY_MS = 1.0;
+    private static final double CLOUD_INGRESS_LATENCY_MS = 40.0;
+    // Incremento di 3.0 ms ogni 100 metri di distanza
+    private static final double MS_PER_METER = 3.0 / 100.0;
+
     @Autowired
     private NodeRepository nodeRepository;
 
@@ -224,13 +229,13 @@ public class NodeService {
                 }
 
                 Double distanceMeters = ((Number) row[2]).doubleValue();
-                double latencyMs = calculateIngressLatency(distanceMeters);
+                double latencyMs = calculateIngressLatency(nodeId, distanceMeters);
 
                 distances.add(NodeDistanceDTO.builder()
                         .areaName(areaName)
                         .nodeId(nodeId)
                         .distanceMeters(Math.round(distanceMeters * 100.0) / 100.0)
-                        .estimatedIngressLatencyMs(latencyMs)
+                        .estimatedIngressLatencyMs(Math.round(latencyMs * 100.0) / 100.0)
                         .build());
             }
             return distances;
@@ -252,33 +257,34 @@ public class NodeService {
     }
 
     public double getIngressLatency(Area area, String nodeId) {
-        // 1. Caso Nodo Cloud -> Latenza WAN fissa
-        if ("node-cloud".equals(nodeId) || nodeId.toLowerCase().contains("cloud")) {
-            return 40.0;
+        // 1. Caso Nodo Cloud -> Latenza WAN fissa di ingresso (40 ms)
+        if ("node-cloud".equals(nodeId) || (nodeId != null && nodeId.toLowerCase().contains("cloud"))) {
+            return CLOUD_INGRESS_LATENCY_MS;
         }
 
         try {
-            // 2. Query PostGIS diretta per distanza tra area Name e nodeId
+            // 2. Calcolo distanza geospaziale diretta da PostGIS
             Double distanceMeters = nodeRepository.findDistanceBetweenAreaAndNode(area.getName(), nodeId);
-            
+
             if (distanceMeters != null) {
-                return calculateIngressLatency(distanceMeters);
+                return calculateIngressLatency(nodeId, distanceMeters);
             }
         } catch (Exception e) {
-            logger.error("Errore nel calcolo della latenza di ingresso per Area '{}' e Nodo '{}': {}", 
+            logger.error("Errore nel calcolo della latenza di ingresso per Area '{}' e Nodo '{}': {}",
                     area.getName(), nodeId, e.getMessage());
         }
 
-        // Fallback di sicurezza se la query o l'area fallisce
-        return 3.0; // Latenza base locale
+        // 3. Fallback di sicurezza: se la query fallisce consideriamo latenza WAN
+        return CLOUD_INGRESS_LATENCY_MS;
     }
 
-    private double calculateIngressLatency(double distanceMeters) {
-        // Modello spaziale per il calcolo della latenza : L_base(3ms) + fattore di rete proporzionale alla distanza
-        double km = distanceMeters / 1000.0;
-        double baseLatencyMs = 3.0;
-        double networkFactorMsPerKm = 0.5;
-        return Math.round((baseLatencyMs + (km * networkFactorMsPerKm)) * 100.0) / 100.0;
+    
+    private double calculateIngressLatency(String nodeId, double distanceMeters) {
+        if ("node-cloud".equals(nodeId)) {
+            return CLOUD_INGRESS_LATENCY_MS;
+        }
+        // Base 1.0 ms + propagazione metrica
+        return BASE_EDGE_LATENCY_MS + (distanceMeters * MS_PER_METER);
     }
 
 

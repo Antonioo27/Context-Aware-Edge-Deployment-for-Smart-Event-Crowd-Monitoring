@@ -27,7 +27,7 @@ public class OrchestratorControlLoop {
     private static final Logger logger = LoggerFactory.getLogger(OrchestratorControlLoop.class);
 
     // Soglia di isteresi
-    private static final double ISTERESI_THRESHOLD = 20.0;
+    private static final double ISTERESI_THRESHOLD = 15.0;
 
     @Autowired
     private OrchestrationController orchestrationController;
@@ -106,18 +106,24 @@ public class OrchestratorControlLoop {
         availableNodes.forEach(node -> nodePodCount.put(node, 0));
 
         Map<String, String> currentAssignments = new HashMap<>();
+        Set<String> nodesWithCriticalAreas = new HashSet<>();
+
         for (Area area : areas) {
             String currentNode = kubernetesOrchestrationService.getCurrentNodeForArea(area.getName());
             currentAssignments.put(area.getName(), currentNode);
             if (nodePodCount.containsKey(currentNode)) {
                 nodePodCount.put(currentNode, nodePodCount.get(currentNode) + 1);
             }
+            if (area.getState() == State.CRITICAL && currentNode != null) {
+                nodesWithCriticalAreas.add(currentNode);
+            }
         }
 
-        // Ordinamento aree, le aree con priorità più bassa bengono valutate per prime.
-        // Se un nodo è sovraccarico, evacueremo prima i Pod meno critici
+        // Ordinamento per priorità statica crescente e poi per criticità dinamica crescente:
+        // le aree meno critiche vengono valutate per prime per essere evacuate per prime
         List<Area> sortedAreas = new ArrayList<>(areas);
-        sortedAreas.sort(Comparator.comparingInt(this::getPriorityRank));
+        sortedAreas.sort(Comparator.comparingInt(this::getPriorityRank)
+                                   .thenComparingInt(this::getStateRank));
 
         // Lettura metriche CPU reali dei nodi
         Map<String, Double> nodeCpuMap = kubernetesOrchestrationService.getNodeCpuUsagePercentageMap();
@@ -158,8 +164,12 @@ public class OrchestratorControlLoop {
             if (currentNodeIsHealthy) {
                 double lIngressoCurrent = nodeService.getIngressLatency(area, currentNode);
                 int podsOnCurrentNode = Math.max(0, nodePodCount.getOrDefault(currentNode, 1) - 1);
+                boolean currentNodeHasCritical = nodesWithCriticalAreas.contains(currentNode);
 
-                currentCost = costCalculator.calculateCost(area, currentNode, lIngressoCurrent, podsOnCurrentNode, currentState, applyOverloadPenaltyOnCurrent);
+                currentCost = costCalculator.calculateCost(
+                        area, currentNode, lIngressoCurrent, podsOnCurrentNode, 
+                        currentState, applyOverloadPenaltyOnCurrent, currentNodeHasCritical
+                );
             }
             double minCost = currentCost;
 
@@ -170,12 +180,16 @@ public class OrchestratorControlLoop {
                 }
 
                 double lIngressoCandidate = nodeService.getIngressLatency(area, candidateNode);
-                int currentLoad = nodePodCount.getOrDefault(candidateNode, 0);
+                int targetLoad = nodePodCount.getOrDefault(candidateNode, 0) + 1;
 
                 Double candidateCpu = nodeCpuMap.getOrDefault(candidateNode, 0.0);
                 boolean isCandidateOverloaded = candidateCpu > CPU_OVERLOAD_THRESHOLD;
+                boolean candidateHasCritical = nodesWithCriticalAreas.contains(candidateNode);
 
-                double candidateCost = costCalculator.calculateCost(area, candidateNode, lIngressoCandidate, currentLoad, currentState, isCandidateOverloaded);
+                double candidateCost = costCalculator.calculateCost(
+                        area, candidateNode, lIngressoCandidate, targetLoad, 
+                        currentState, isCandidateOverloaded, candidateHasCritical
+                );
 
                 // Regola di decisione con Isteresi (o Failover forzato se il nodo attuale è morto)
                 if (!currentNodeIsHealthy || candidateCost < (currentCost - ISTERESI_THRESHOLD)) {
@@ -215,6 +229,17 @@ public class OrchestratorControlLoop {
             case MEDIUM -> 3;
             case HIGH -> 4;
             case VERY_HIGH -> 5;
+        };
+    }
+
+    private int getStateRank(Area area) {
+        State s = area.getState() != null ? area.getState() : State.NONE;
+        return switch (s) {
+            case NONE -> 1;
+            case LOW -> 2;
+            case MEDIUM -> 3;
+            case HIGH -> 4;
+            case CRITICAL -> 5;
         };
     }
 

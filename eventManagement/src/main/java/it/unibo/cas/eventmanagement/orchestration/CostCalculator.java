@@ -19,7 +19,8 @@ public class CostCalculator {
      * calcolo costo totale di un piazzamento Pod dell'area A sul nodo N-
      * Costo = L_ingresso(A,N) * W(Area) + L_uscita(A,N) + PenalitàCarico
      */
-    public double calculateCost(Area area, String targetNodeId, double lIngressoMs, int currentPodsOnNode, State currentState, Boolean isTargetNodeOverloaded) {
+    public double calculateCost(Area area, String targetNodeId, double lIngressoMs, int currentPodsOnNode, 
+        State currentState, Boolean isTargetNodeOverloaded, Boolean nodeHostsCriticalArea) {
         
         boolean isCloud = "node-cloud".equals(targetNodeId);
 
@@ -34,7 +35,13 @@ public class CostCalculator {
         // Penalità carico, se nodo edge ospita già Pod
         double loadPenalty = 0.0;
         if (!isCloud) {
-            loadPenalty = currentPodsOnNode * 15.0;
+            loadPenalty = currentPodsOnNode * 3.0;
+            
+            // Prevenzione: se il nodo ospita un'area CRITICAL e quest'area non è CRITICAL,
+            // applichiamo un extra costo per liberare preventivamente l'Edge
+            if (nodeHostsCriticalArea && currentState != State.CRITICAL) {
+                loadPenalty += 40.0;
+            }
         } else {
             loadPenalty = CLOUD_WAN_PENALTY;
         }
