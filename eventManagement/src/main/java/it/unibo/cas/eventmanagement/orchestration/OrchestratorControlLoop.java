@@ -68,6 +68,12 @@ public class OrchestratorControlLoop {
         // Politica CONTEXT_AWARE
         if (currentPolicy == OrchestrationPolicy.CONTEXT_AWARE) {
             handleContextAwarePolicy(areas);
+            return;
+        }
+
+        // Politica STATIC
+        if (currentPolicy == OrchestrationPolicy.STATIC) {
+            handleStaticPolicy(areas);
         }
 
     }
@@ -79,6 +85,44 @@ public class OrchestratorControlLoop {
             if (!"node-cloud".equals(currentNode)) {
                 logger.info(" [CLOUD-ONLY] Spostamento area '{}' da {} -> node-cloud", area.getName(), currentNode);
                 kubernetesOrchestrationService.migratePodToNode(area.getName(), "node-cloud");
+            }
+        }
+    }
+
+    // Politica Static
+    private void handleStaticPolicy(List<Area> areas) {
+        Map<String, Boolean> nodeHealthMap = kubernetesOrchestrationService.getNodeStatusMap();
+        List<String> availableNodes = new ArrayList<>();
+    
+        nodeHealthMap.forEach((nodeId, isReady) -> {
+            if (Boolean.TRUE.equals(isReady)) {
+                availableNodes.add(nodeId);
+            } else {
+                logger.warn(" [STATIC-FAILOVER] Nodo {} offline!", nodeId);
+            }
+        });
+
+        if (availableNodes.isEmpty()) {
+            logger.error(" [ORCHESTRATOR-STATIC] Nessun nodo K8s disponibile!");
+            return;
+        }
+    
+        for (Area area : areas) {
+            String currentNode = kubernetesOrchestrationService.getCurrentNodeForArea(area.getName());
+            
+            // Trova il nodo naturale migliore per vicinanza geografica (L_ingresso)
+            String targetStaticNode = findStaticBestNode(area, availableNodes);
+
+            if (targetStaticNode == null) {
+                targetStaticNode = "node-cloud";
+            }
+
+            // Se non è sul suo nodo statico ottimale (es. all'avvio o dopo un ripristino guasto), spostalo
+            if (!targetStaticNode.equals(currentNode)) {
+                logger.info(" [STATIC-POLICY] Assegnazione statica Area '{}': {} -> {} (Edge naturale più vicino)",
+                        area.getName(), currentNode, targetStaticNode);
+            
+                boolean success = kubernetesOrchestrationService.migratePodToNode(area.getName(), targetStaticNode);
             }
         }
     }
@@ -277,5 +321,22 @@ public class OrchestratorControlLoop {
         };
     }
 
+    /**
+     * Individua il nodo con la minore latenza di ingresso geografica (PostGIS)
+     * senza considerare folla, alert, CPU o carichi di altri Pod.
+     */
+    private String findStaticBestNode(Area area, List<String> availableNodes) {
+        String bestNode = null;
+        double minLatency = Double.MAX_VALUE;
+
+        for (String node : availableNodes) {
+            double ingressLatency = nodeService.getIngressLatency(area, node);
+            if (ingressLatency < minLatency) {
+                minLatency = ingressLatency;
+                bestNode = node;
+            }
+        }
+        return bestNode;
+    }
     
 }
