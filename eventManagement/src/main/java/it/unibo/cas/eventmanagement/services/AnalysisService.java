@@ -6,7 +6,7 @@ import it.unibo.cas.eventmanagement.models.enums.State;
 import it.unibo.cas.eventmanagement.repositories.AnalysisStatsRepository;
 import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
 import it.unibo.cas.eventmanagement.models.entities.Alert;
-import it.unibo.cas.eventmanagement.services.prediction.LinearRegressionPredictor;
+import it.unibo.cas.eventmanagement.utils.LinearRegressionPredictor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;

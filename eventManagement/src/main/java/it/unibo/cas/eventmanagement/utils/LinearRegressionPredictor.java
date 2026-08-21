@@ -1,10 +1,12 @@
-package it.unibo.cas.eventmanagement.services.prediction;
+package it.unibo.cas.eventmanagement.utils;
 
 import it.unibo.cas.eventmanagement.models.DTOs.PredictionPointDTO;
 import it.unibo.cas.eventmanagement.models.entities.AnalysisStats;
 
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class LinearRegressionPredictor {
@@ -81,10 +83,10 @@ public class LinearRegressionPredictor {
      *                      secondi)
      * @return lista di punti predetti nel futuro
      */
-    public static java.util.List<PredictionPointDTO> predictFutureTrend(
+    public static List<PredictionPointDTO> predictFutureTrend(
             List<AnalysisStats> history, int futureMinutes, int stepSeconds) {
         if (history == null || history.size() < 2) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
 
         OffsetDateTime origin = history.getFirst().getTs();
@@ -105,14 +107,14 @@ public class LinearRegressionPredictor {
         double denominator = sumX2 - n * meanX * meanX;
 
         if (denominator == 0) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
 
         double slope = (sumXY - n * meanX * meanY) / denominator;
         double intercept = meanY - slope * meanX;
 
         OffsetDateTime lastRecord = history.get(n - 1).getTs();
-        java.util.List<PredictionPointDTO> predictions = new java.util.ArrayList<>();
+        List<PredictionPointDTO> predictions = new ArrayList<>();
 
         int totalSecondsToPredict = futureMinutes * 60;
         if (stepSeconds <= 0)

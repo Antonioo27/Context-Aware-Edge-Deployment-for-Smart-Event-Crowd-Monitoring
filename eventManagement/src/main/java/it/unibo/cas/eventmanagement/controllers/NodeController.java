@@ -31,9 +31,17 @@ public class NodeController {
     }
 
     @PostMapping
-    public ResponseEntity<Node> createNode(@RequestBody NodeDTO nodeDTO) {
+    public ResponseEntity<NodeDTO> createNode(@RequestBody NodeDTO nodeDTO) {
         Node created = nodeService.createNode(nodeDTO);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        NodeDTO dto = NodeDTO.builder()
+                .id(created.getId())
+                .name(created.getName())
+                .type(created.getType())
+                .brokerUrl(created.getBrokerUrl())
+                .latitude(created.getLocation() != null ? created.getLocation().getY() : 0.0)
+                .longitude(created.getLocation() != null ? created.getLocation().getX() : 0.0)
+                .build();
+        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
     /**

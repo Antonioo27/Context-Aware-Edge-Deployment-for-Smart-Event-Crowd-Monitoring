@@ -47,3 +47,6 @@ Smart Event Crowd Monitoring.md
 
 # --- Comandi k8s ---
 k8s_commands.md
+
+# --- Node.js ---
+./event-frontend/node_modules

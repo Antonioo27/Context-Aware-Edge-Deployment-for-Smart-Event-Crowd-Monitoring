@@ -23,7 +23,10 @@ kubectl label node edge-cluster-m02 tier=edge node-id=node-edge-1 --overwrite
 kubectl label node edge-cluster-m03 tier=edge node-id=node-edge-2 --overwrite 
 kubectl label node edge-cluster-m04 tier=edge node-id=node-edge-3 --overwrite
 
-print_step "3/7: Esecuzione degli script di redeploy"
+print_step "3/8: Creazione ConfigMap"
+kubectl create configmap event-analysis-config --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
+
+print_step "4/8: Esecuzione degli script di redeploy"
 # Visto che i redeploy.sh si trovano nelle sottocartelle, li richiamo singolarmente
 if [ -f "eventManagement/redeploy.sh" ]; then
     echo "-> Eseguo eventManagement/redeploy.sh"
@@ -45,20 +48,20 @@ else
     echo "-> ATTENZIONE: eventAnalysis/redeploy.sh non trovato!"
 fi
 
-print_step "4/7: Attesa dei servizi per i port-forward"
+print_step "5/8: Attesa dei servizi per i port-forward"
 # Aspetta che event-management-svc sia pronto per il port-forward
 echo "Attesa di event-management-svc..."
 while ! kubectl get svc event-management-svc > /dev/null 2>&1; do
     sleep 2
 done
 
-print_step "5/7: Avvio port forward per event-management-svc (in background)"
+print_step "6/8: Avvio port forward per event-management-svc (in background)"
 kubectl port-forward svc/event-management-svc 8080:8080 &
 
-print_step "6/7: Avvio minikube dashboard (in background)"
+print_step "7/8: Avvio minikube dashboard (in background)"
 minikube dashboard -p edge-cluster &
 
-print_step "7/7: Attesa servizi mosquitto e avvio tunnel broker"
+print_step "8/8: Attesa servizi mosquitto e avvio tunnel broker"
 echo "Attesa dei servizi mosquitto..."
 while ! kubectl get svc mosquitto-cloud mosquitto-edge-1 mosquitto-edge-2 mosquitto-edge-3 > /dev/null 2>&1; do
     sleep 2
