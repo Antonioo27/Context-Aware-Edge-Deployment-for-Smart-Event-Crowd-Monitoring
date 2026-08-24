@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
@@ -32,7 +32,24 @@ const getStateColor = (state?: State): { color: string; fillColor: string; fillO
   }
 };
 
-const MapContent: React.FC<MonitoringMapProps> = ({
+// Componente per abilitare zoom e pan SOLO tenendo premuto Ctrl/Cmd
+const CtrlKeyInteractionHandler: React.FC<{ isCtrlPressed: boolean }> = ({ isCtrlPressed }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (isCtrlPressed) {
+      map.scrollWheelZoom.enable();
+      map.dragging.enable();
+    } else {
+      map.scrollWheelZoom.disable();
+      map.dragging.disable();
+    }
+  }, [map, isCtrlPressed]);
+
+  return null;
+};
+
+const MapContent: React.FC<MonitoringMapProps & { isCtrlPressed: boolean }> = ({
   areas,
   nodes,
   onAreaDraw,
@@ -41,11 +58,17 @@ const MapContent: React.FC<MonitoringMapProps> = ({
   onNodeEdit,
   onAreaDelete,
   manualAlertMode,
-  onMapClick
+  onMapClick,
+  isCtrlPressed
 }) => {
   const map = useMap();
   const drawnItemsRef = useRef(new L.FeatureGroup());
   const drawControlRef = useRef<L.Control.Draw | null>(null);
+
+  // Forza il ricalcolo delle dimensioni quando il contenitore si adatta
+  useEffect(() => {
+    map.invalidateSize();
+  }, [map]);
 
   useEffect(() => {
     const drawnItems = drawnItemsRef.current;
@@ -170,22 +193,76 @@ const MapContent: React.FC<MonitoringMapProps> = ({
     }
   });
 
-  return null;
+  return <CtrlKeyInteractionHandler isCtrlPressed={isCtrlPressed} />;
 };
 
 const MonitoringMap: React.FC<MonitoringMapProps> = (props) => {
+  const [isCtrlPressed, setIsCtrlPressed] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta' || e.ctrlKey || e.metaKey) {
+        setIsCtrlPressed(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) {
+        setIsCtrlPressed(false);
+      }
+    };
+
+    const handleBlur = () => {
+      setIsCtrlPressed(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
   return (
-    <div style={{ cursor: props.manualAlertMode ? 'crosshair' : 'default', height: '100%', width: '100%' }}>
+    <div 
+      style={{ 
+        cursor: props.manualAlertMode ? 'crosshair' : isCtrlPressed ? 'grab' : 'default', 
+        height: '100%', 
+        width: '100%', 
+        minHeight: '700px',
+        position: 'relative'
+      }}
+    >
+      {/* Badge di suggerimento visivo per l'utente */}
+      <div 
+        className={`position-absolute bottom-0 start-0 m-2 px-2 py-1 rounded small ${isCtrlPressed ? 'bg-success text-white' : 'bg-dark text-white opacity-75'}`}
+        style={{ zIndex: 1000, pointerEvents: 'none', fontSize: '0.75rem' }}
+      >
+        {isCtrlPressed ? '✔ Mappa sbloccata (Trascina / Zoom attivo)' : '💡 Tieni premuto CTRL per muovere la mappa o zoomare'}
+      </div>
+
       <MapContainer
         center={[44.4937544, 11.3409058]}
-        zoom={14}
-        style={{ height: '600px', width: '100%', borderBottomLeftRadius: 'var(--bs-border-radius)', borderBottomRightRadius: 'var(--bs-border-radius)' }}
+        zoom={17}
+        scrollWheelZoom={false}
+        dragging={false}
+        style={{ 
+          height: '100%', 
+          minHeight: '700px', 
+          width: '100%', 
+          borderBottomLeftRadius: 'var(--bs-border-radius)', 
+          borderBottomRightRadius: 'var(--bs-border-radius)' 
+        }}
       >
         <TileLayer
           attribution='&copy; OpenStreetMap contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapContent {...props} />
+        <MapContent {...props} isCtrlPressed={isCtrlPressed} />
       </MapContainer>
     </div>
   );

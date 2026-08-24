@@ -12,9 +12,8 @@ interface InfrastructurePanelProps {
 const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefreshNeeded }) => {
   const [migrations, setMigrations] = useState<MigrationDTO[]>([]);
   const [allocations, setAllocations] = useState<Record<string, string[]>>({});
-  const [loadingMigrations, setLoadingMigrations] = useState<boolean>(false);
   const [syncingK8s, setSyncingK8s] = useState<boolean>(false);
-
+  
   const fetchAllocationsAndMigrations = async () => {
     try {
       const [migs, allocs] = await Promise.all([
@@ -30,7 +29,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
 
   useEffect(() => {
     fetchAllocationsAndMigrations();
-    const interval = setInterval(fetchAllocationsAndMigrations, 4000); // Polling ogni 4s
+    const interval = setInterval(fetchAllocationsAndMigrations, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -57,7 +56,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
 
   return (
     <div className="row g-3">
-      {/* Colonna Sinistra: Nodi e Pod Allocati */}
+      {/* Colonna Sinistra: Nodi e Pod Allocati (Espansa al 100% senza scrollbar) */}
       <div className="col-md-5">
         <Card className="h-100">
           <CardHeader className="bg-secondary text-white d-flex justify-content-between align-items-center">
@@ -71,7 +70,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
               {syncingK8s ? 'Syncing...' : 'Sync K8s'}
             </button>
           </CardHeader>
-          <CardBody className="p-3" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+          <CardBody className="p-3">
             <div className="row g-2">
               {nodes.map(node => {
                 const isEdge = node.type === 'EDGE';
@@ -110,7 +109,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
 
       {/* Colonna Destra: Audit Log Migrazioni Orchestratore */}
       <div className="col-md-7">
-        <Card className="h-100">
+        <Card className="h-100 d-flex flex-column">
           <CardHeader className="bg-dark text-white d-flex justify-content-between align-items-center">
             <div className="d-flex align-items-center gap-2">
               <h6 className="mb-0 fw-bold">Audit Log Migrazioni K8s</h6>
@@ -122,7 +121,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
               </button>
             )}
           </CardHeader>
-          <CardBody className="p-0" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+          <CardBody className="p-0 flex-grow-1 overflow-auto">
             {migrations.length === 0 ? (
               <div className="text-center py-4 text-muted small">Nessuna migrazione registrata.</div>
             ) : (

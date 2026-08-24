@@ -62,16 +62,14 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="col-md-6">
-          <Card className="h-100">
+          <Card className="h-100 d-flex flex-column">
             <CardHeader className="bg-dark text-white d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
                 <h5 className="mb-0">Mappa di Monitoraggio</h5>
-                {/* BOTTONE SYNC K8S */}
                 <button 
                   className="btn btn-sm btn-outline-info text-white py-0 px-2"
                   onClick={handleSyncK8s}
                   disabled={syncing}
-                  title="Interroga K8s per scoprire e aggiornare i nodi"
                 >
                   {syncing ? 'Sincronizzazione...' : '🔄 Sincronizza Nodi K8s'}
                 </button>
@@ -84,7 +82,7 @@ const Dashboard: React.FC = () => {
                 <span className="badge bg-danger">CRITICAL</span>
               </div>
             </CardHeader>
-            <CardBody className="p-0 position-relative">
+            <CardBody className="p-0 position-relative flex-grow-1 d-flex flex-column" style={{ minHeight: '700px' }}>
               <MonitoringMap 
                 areas={areas}
                 nodes={nodes}

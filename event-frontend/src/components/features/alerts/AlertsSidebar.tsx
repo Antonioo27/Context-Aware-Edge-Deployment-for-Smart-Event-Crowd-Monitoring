@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { UserType } from '../../../types';
 import type { ManualAlertDTO } from '../../../types';
 import { alertApi } from '../../../api/alertApi';
@@ -26,7 +26,16 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
   const [lat, setLat] = useState<number | ''>('');
   const [sendingAlert, setSendingAlert] = useState(false);
 
-  // Sync coords from map
+  // Ordina gli alert dal più recente al meno recente (ts decrescente)
+  const sortedAlerts = useMemo(() => {
+    return [...alerts].sort((a, b) => {
+      const timeA = a.alert?.ts ? new Date(a.alert.ts).getTime() : 0;
+      const timeB = b.alert?.ts ? new Date(b.alert.ts).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [alerts]);
+
+  // Sincronizza coordinate GPS dalla mappa
   useEffect(() => {
     if (manualAlertLocation) {
       setLat(manualAlertLocation.lat);
@@ -54,7 +63,7 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
       setLat('');
       setLon('');
       if (setManualAlertLocation) setManualAlertLocation(null);
-      refreshAlerts(); // Optionally refresh alerts after sending
+      refreshAlerts();
     } catch (e) {
       alert("Errore invio alert");
     } finally {
@@ -64,8 +73,9 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
 
   return (
     <Card className="h-100" testId="alerts-sidebar">
-      <CardHeader className="bg-danger text-white">
+      <CardHeader className="bg-danger text-white d-flex justify-content-between align-items-center">
         <h5 className="mb-0">Alert e Notifiche</h5>
+        <span className="badge bg-white text-danger">{sortedAlerts.length}</span>
       </CardHeader>
       <CardBody className="d-flex flex-column p-0" style={{ height: '700px' }}>
         
@@ -85,16 +95,23 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
         </div>
         
         <div className="flex-grow-1 overflow-auto p-3">
-          {loading && alerts.length === 0 ? (
+          {loading && sortedAlerts.length === 0 ? (
             <p className="text-muted text-center mt-3">Caricamento...</p>
-          ) : alerts.length === 0 ? (
+          ) : sortedAlerts.length === 0 ? (
             <p className="text-muted text-center mt-3">Nessun alert per questo utente.</p>
           ) : (
             <ul className="list-group list-group-flush">
-              {alerts.map((notify, index) => (
+              {sortedAlerts.map((notify, index) => (
                 <li key={index} className="list-group-item border-start border-4 border-danger mb-2 bg-light rounded shadow-sm">
-                  <div className="fw-bold mb-1">{notify.priority} - {notify.alert?.cause || "System"}</div>
-                  <small className="text-muted">{new Date(notify.alert?.ts).toLocaleString()}</small>
+                  <div className="d-flex justify-content-between align-items-start">
+                    <span className="fw-bold mb-1">{notify.priority} - {notify.alert?.cause || "System"}</span>
+                    <small className="text-muted ms-2 text-nowrap">
+                      {notify.alert?.ts ? new Date(notify.alert.ts).toLocaleTimeString() : ''}
+                    </small>
+                  </div>
+                  <small className="text-secondary d-block">
+                    {notify.alert?.ts ? new Date(notify.alert.ts).toLocaleDateString() : ''}
+                  </small>
                   <p className="mb-0 mt-1 small">{notify.message}</p>
                 </li>
               ))}
@@ -102,7 +119,7 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
           )}
         </div>
 
-        {/* Nuova Sezione per Alert Manuale */}
+        {/* Sezione Alert Manuale */}
         <div className="p-3 bg-light border-top">
           <h6 className="fw-bold mb-2">Invia Alert Manuale</h6>
           <div className="mb-2">
