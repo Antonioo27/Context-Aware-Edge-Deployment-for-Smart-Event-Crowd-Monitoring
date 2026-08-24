@@ -71,12 +71,16 @@ export function useMapInteractions(refreshData: () => void) {
 
   const handleSaveNode = async (node: NodeDTO) => {
     try {
-      await nodeApi.createNode(node);
+      if (node.id) {
+        await nodeApi.updateNode(node.id, node); // Esegue PUT /api/nodes/{id}
+      } else {
+        await nodeApi.createNode(node);
+      }
       setShowNodeModal(false);
-      if (currentLayer) currentLayer.remove();
-      refreshData();
-    } catch (e) {
-      alert("Errore salvataggio nodo");
+      await refreshData();
+    } catch (error) {
+      console.error('Errore nel salvataggio del nodo:', error);
+      alert('Errore durante l\'aggiornamento della posizione del nodo.');
     }
   };
 

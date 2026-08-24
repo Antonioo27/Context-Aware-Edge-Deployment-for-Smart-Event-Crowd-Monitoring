@@ -14,4 +14,7 @@ export const nodeApi = {
       method: 'PUT',
       body: JSON.stringify(node),
     }),
+  syncK8sNodes: () => fetchClient<NodeDTO[]>('/api/nodes/sync-k8s', { method: 'POST' }),
+  getNodeAllocations: () =>
+    fetchClient<Record<string, string[]>>('/api/nodes/allocations', { method: 'GET' }),
 };

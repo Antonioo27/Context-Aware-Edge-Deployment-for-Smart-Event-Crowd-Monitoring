@@ -2,6 +2,7 @@ package it.unibo.cas.eventmanagement.services;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -278,6 +279,57 @@ public class NodeService {
         return CLOUD_INGRESS_LATENCY_MS;
     }
 
+    public Map<String, List<String>> getNodePodAllocations() {
+        Map<String, List<String>> allocationMap = new HashMap<>();
+        
+        // Inizializza la mappa con tutti i nodi censiti (lista vuota)
+        List<Node> allNodes = nodeRepository.findAll();
+        for (Node n : allNodes) {
+            allocationMap.put(n.getId(), new ArrayList<>());
+        }
+        // Assicurati che esista anche la chiave node-cloud
+        allocationMap.putIfAbsent("node-cloud", new ArrayList<>());
+
+        try {
+            // Recupera tutti i Pod del namespace
+            var pods = kubernetesClient.pods().inNamespace(kubernetesClient.getNamespace()).list().getItems();
+            for (var pod : pods) {
+                String podName = pod.getMetadata().getName();
+                
+                // Filtra solo i pod dei servizi di analisi
+                if (podName.startsWith("event-analysis-")) {
+                    // 1. Prova a leggere il node-id dal nodeSelector
+                    String targetNodeId = null;
+                    if (pod.getSpec() != null && pod.getSpec().getNodeSelector() != null) {
+                        targetNodeId = pod.getSpec().getNodeSelector().get("node-id");
+                    }
+                    
+                    // 2. Se non presente nel nodeSelector, ricava il nodo fisico reale di K8s
+                    if (targetNodeId == null && pod.getSpec() != null && pod.getSpec().getNodeName() != null) {
+                        String k8sNodeName = pod.getSpec().getNodeName();
+                        var k8sNode = kubernetesClient.nodes().withName(k8sNodeName).get();
+                        if (k8sNode != null && k8sNode.getMetadata().getLabels() != null) {
+                            targetNodeId = k8sNode.getMetadata().getLabels().get("node-id");
+                        }
+                        if (targetNodeId == null) {
+                            targetNodeId = k8sNodeName;
+                        }
+                    }
+
+                    if (targetNodeId == null) {
+                        targetNodeId = "node-cloud";
+                    }
+
+                    allocationMap.computeIfAbsent(targetNodeId, k -> new ArrayList<>()).add(podName);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Errore nel recupero delle allocazioni Pod da K8s: {}", e.getMessage());
+        }
+
+        return allocationMap;
+    }
+
     
     private double calculateIngressLatency(String nodeId, double distanceMeters) {
         if ("node-cloud".equals(nodeId)) {
@@ -298,5 +350,7 @@ public class NodeService {
                 .longitude(node.getLocation() != null ? node.getLocation().getX() : 0.0)
                 .build();
     }
+
+
 
 }

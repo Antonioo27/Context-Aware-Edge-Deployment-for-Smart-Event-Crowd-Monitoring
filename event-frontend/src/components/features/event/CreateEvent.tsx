@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { EventDTO } from '../../../types';
 import { eventApi } from '../../../api/eventApi';
 import { Card, CardHeader, CardBody } from '../../ui/Card';
 
 interface Props {
   onEventCreated: () => void;
+  onSkipToDashboard: () => void;
 }
 
-const CreateEvent: React.FC<Props> = ({ onEventCreated }) => {
+const CreateEvent: React.FC<Props> = ({ onEventCreated, onSkipToDashboard }) => {
   const [formData, setFormData] = useState<EventDTO>({
     name: '',
     description: '',
@@ -21,7 +22,7 @@ const CreateEvent: React.FC<Props> = ({ onEventCreated }) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e: React.SubmitEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -40,8 +41,15 @@ const CreateEvent: React.FC<Props> = ({ onEventCreated }) => {
       <div className="row justify-content-center">
         <div className="col-md-8">
           <Card>
-            <CardHeader className="bg-primary text-white">
+            <CardHeader className="bg-primary text-white d-flex justify-content-between align-items-center">
               <h5 className="mb-0">Crea Nuovo Evento</h5>
+              <button 
+                type="button" 
+                className="btn btn-outline-light btn-sm"
+                onClick={onSkipToDashboard}
+              >
+                Vai alla Dashboard ➔
+              </button>
             </CardHeader>
             <CardBody className="p-4">
               {error && <div className="alert alert-danger">{error}</div>}
@@ -62,7 +70,14 @@ const CreateEvent: React.FC<Props> = ({ onEventCreated }) => {
                   <label htmlFor="city" className="form-label">Città</label>
                   <input type="text" className="form-control" id="city" name="city" required value={formData.city} onChange={handleChange} data-testid="create-event-city" />
                 </div>
-                <div className="d-grid mt-4">
+                <div className="d-flex justify-content-between align-items-center mt-4">
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary"
+                    onClick={onSkipToDashboard}
+                  >
+                    Salta e vai alla Dashboard
+                  </button>
                   <button type="submit" className="btn btn-primary" disabled={loading} data-testid="create-event-submit">
                     {loading ? 'Creazione in corso...' : 'Crea Evento'}
                   </button>

@@ -94,7 +94,7 @@ class PopulationModel:
         return np.array([self.areas_by_id[aid].population for aid in self.area_ids], dtype=float)
 
     def occupancy_vector(self):
-        """Vettore = (n_i / C_i) su tutte le aree."""
+        """Vettore = (numero_persone / capienza_persone) su tutte le aree."""
         return self.population_vector() / self.capacities
  
     def devices_in_area(self, area_id: str):

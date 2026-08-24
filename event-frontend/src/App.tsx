@@ -25,6 +25,17 @@ function App() {
     checkEvent();
   }, []);
 
+  const handleSkipToDashboard = () => {
+    // Imposta un evento fittizio per sbloccare la visualizzazione completa
+    setEventData({
+      id: 'active',
+      name: 'Smart Event Monitoring',
+      description: 'Sessione di monitoraggio attiva',
+      location: 'Area Evento',
+      city: 'Bologna'
+    });
+  };
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center vh-100">
@@ -46,11 +57,15 @@ function App() {
         {eventData && (
           <button className="btn btn-outline-danger btn-sm" onClick={async () => {
              if (confirm('Vuoi davvero eliminare questo evento e resettare tutto?')) {
-               await eventApi.deleteEvent();
-               checkEvent();
+               try {
+                 await eventApi.deleteEvent();
+               } catch (e) {
+                 console.error(e);
+               }
+               setEventData(null);
              }
           }}>
-            Elimina Evento
+            Elimina / Cambia Evento
           </button>
         )}
       </header>
@@ -66,7 +81,10 @@ function App() {
             </div>
           </div>
         ) : (
-          <CreateEvent onEventCreated={checkEvent} />
+          <CreateEvent 
+            onEventCreated={checkEvent} 
+            onSkipToDashboard={handleSkipToDashboard} 
+          />
         )}
       </main>
 
@@ -78,4 +96,3 @@ function App() {
 }
 
 export default App
-

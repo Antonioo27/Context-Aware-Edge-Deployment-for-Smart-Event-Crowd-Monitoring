@@ -1,15 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import AlertsSidebar from '../alerts/AlertsSidebar';
 import AnalysisSidebar from '../analysis/AnalysisSidebar';
 import MonitoringMap from '../map/MonitoringMap';
+import InfrastructurePanel from '../infrastructure/InfrastructurePanel';
 import AreaFormModal from './AreaFormModal';
 import NodeFormModal from './NodeFormModal';
 import { useDashboardData } from '../../../hooks/useDashboardData';
 import { useMapInteractions } from '../../../hooks/useMapInteractions';
+import { nodeApi } from '../../../api/nodeApi';
 import { Card, CardHeader, CardBody } from '../../ui/Card';
 
 const Dashboard: React.FC = () => {
   const { areas, nodes, refreshData } = useDashboardData();
+  const [syncing, setSyncing] = useState<boolean>(false);
+
   const {
     showAreaModal,
     showNodeModal,
@@ -29,10 +33,25 @@ const Dashboard: React.FC = () => {
     handleCancel
   } = useMapInteractions(refreshData);
 
+  // Chiamata esplicita al sync K8s dal frontend
+  const handleSyncK8s = async () => {
+    setSyncing(true);
+    try {
+      const syncedNodes = await nodeApi.syncK8sNodes();
+      alert(`Sincronizzazione completata con successo! Rilevati ${syncedNodes.length} nodi da Kubernetes.`);
+      await refreshData();
+    } catch (err) {
+      console.error('Errore durante la sincronizzazione con Kubernetes', err);
+      alert('Errore durante la sincronizzazione dei nodi da K8s.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
-    <div className="container-fluid mt-4" data-testid="dashboard-container">
+    <div className="container-fluid mt-2" data-testid="dashboard-container">
+      {/* 3 Colonne: Alert | Mappa | Analisi */}
       <div className="row g-3">
-        {/* Colonna Sinistra: Alert */}
         <div className="col-md-3">
           <AlertsSidebar 
             manualAlertMode={manualAlertMode}
@@ -42,11 +61,21 @@ const Dashboard: React.FC = () => {
           />
         </div>
 
-        {/* Colonna Centrale: Mappa */}
         <div className="col-md-6">
           <Card className="h-100">
             <CardHeader className="bg-dark text-white d-flex justify-content-between align-items-center">
-              <h5 className="mb-0">Mappa di Monitoraggio</h5>
+              <div className="d-flex align-items-center gap-2">
+                <h5 className="mb-0">Mappa di Monitoraggio</h5>
+                {/* BOTTONE SYNC K8S */}
+                <button 
+                  className="btn btn-sm btn-outline-info text-white py-0 px-2"
+                  onClick={handleSyncK8s}
+                  disabled={syncing}
+                  title="Interroga K8s per scoprire e aggiornare i nodi"
+                >
+                  {syncing ? 'Sincronizzazione...' : '🔄 Sincronizza Nodi K8s'}
+                </button>
+              </div>
               <div className="d-flex align-items-center gap-2 small">
                 <span className="badge border" style={{backgroundColor: 'transparent', color: 'white'}}>NONE</span>
                 <span className="badge bg-success">LOW</span>
@@ -74,10 +103,16 @@ const Dashboard: React.FC = () => {
           </Card>
         </div>
 
-        {/* Colonna Destra: Analisi */}
         <div className="col-md-3">
           <AnalysisSidebar areas={areas} />
         </div>
+      </div>
+
+      {/* Pannello Nodi e Migrazioni sottostante */}
+      <div className="mt-3">
+        <InfrastructurePanel 
+          nodes={nodes} 
+        />
       </div>
 
       {showAreaModal && currentAreaCoords && (
@@ -92,6 +127,7 @@ const Dashboard: React.FC = () => {
         <NodeFormModal
           latitude={currentNodeCoords.lat}
           longitude={currentNodeCoords.lng}
+          nodes={nodes}
           onSave={handleSaveNode}
           onCancel={handleCancel}
         />

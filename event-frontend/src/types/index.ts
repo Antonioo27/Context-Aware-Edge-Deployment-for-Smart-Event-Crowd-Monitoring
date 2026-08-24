@@ -98,3 +98,17 @@ export interface ManualAlertDTO {
   lon: number;
   lat: number;
 }
+
+export interface MigrationDTO {
+  id: number;
+  areaId: string;
+  podName: string;
+  fromNode: string;
+  toNode: string;
+  previousCost?: number;
+  newCost?: number;
+  reason: string;
+  success: boolean;
+  errorMessage?: string;
+  timestamp: string;
+}
