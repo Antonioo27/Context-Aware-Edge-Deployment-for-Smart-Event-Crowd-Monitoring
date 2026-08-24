@@ -17,4 +17,6 @@ export const nodeApi = {
   syncK8sNodes: () => fetchClient<NodeDTO[]>('/api/nodes/sync-k8s', { method: 'POST' }),
   getNodeAllocations: () =>
     fetchClient<Record<string, string[]>>('/api/nodes/allocations', { method: 'GET' }),
+  getNodeCpuMetrics: () =>
+    fetchClient<Record<string, number>>('/api/nodes/nodeUsage', { method: 'GET' }),
 };

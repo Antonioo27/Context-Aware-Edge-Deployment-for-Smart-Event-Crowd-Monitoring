@@ -19,6 +19,7 @@ import it.unibo.cas.eventmanagement.exception.ResourceNotFoundException;
 import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.entities.Node;
 import it.unibo.cas.eventmanagement.models.enums.NodeType;
+import it.unibo.cas.eventmanagement.orchestration.KubernetesOrchestrationService;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDTO;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDistanceDTO;
 import it.unibo.cas.eventmanagement.repositories.NodeRepository;
@@ -45,6 +46,8 @@ public class NodeService {
     @Autowired
     private KubernetesClient kubernetesClient;
 
+    @Autowired
+    private KubernetesOrchestrationService kubernetesOrchestrationService;
 
     /**
     * Interroga l'API Server di Kubernetes per scoprire i nodi del cluster
@@ -328,6 +331,10 @@ public class NodeService {
         }
 
         return allocationMap;
+    }
+
+    public Map<String, Double> getNodeCpuMetrics() {
+        return kubernetesOrchestrationService.getNodeCpuUsagePercentageMap();
     }
 
     

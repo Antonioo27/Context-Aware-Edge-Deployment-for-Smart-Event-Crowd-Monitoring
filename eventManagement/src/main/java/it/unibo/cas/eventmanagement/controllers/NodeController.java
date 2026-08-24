@@ -18,6 +18,7 @@ public class NodeController {
     
     @Autowired private NodeService nodeService;
 
+
     @PostMapping("/sync-k8s")
     public ResponseEntity<List<NodeDTO>> syncFromKubernetes() {
         List<NodeDTO> nodes = nodeService.syncNodesFromKubernetes();
@@ -38,23 +39,25 @@ public class NodeController {
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
-    /**
-     * Aggiorna le coordinate GPS (Lat, Lon) e il brokerUrl del nodo logico.
-     * Usato dalla Dashboard quando l'utente posiziona il nodo sulla mappa.
-     * Non viene usato dall'utente per aggiornare il broker
-     */
-    @PutMapping("/{id}")
-    public ResponseEntity<NodeDTO> updateNode(@PathVariable String id, @RequestBody NodeDTO nodeDTO) {
-        NodeDTO updated = nodeService.updateNodeLocationAndBroker(id, nodeDTO);
-        return ResponseEntity.ok(updated);
-    }
-
-
     @GetMapping
     public ResponseEntity<List<NodeDTO>> getAllNodes() {
         return ResponseEntity.ok(nodeService.getAllNodes());
     }
 
+    @GetMapping("/distances")
+    public ResponseEntity<List<NodeDistanceDTO>> getAreaNodeDistances() {
+        return ResponseEntity.ok(nodeService.getAreaNodeDistances());
+    }
+
+    @GetMapping("/allocations")
+    public ResponseEntity<Map<String, List<String>>> getNodePodAllocations() {
+        return ResponseEntity.ok(nodeService.getNodePodAllocations());
+    }
+
+    @GetMapping("/nodeUsage")
+    public ResponseEntity<Map<String, Double>> getNodeCpuMetrics() {
+        return ResponseEntity.ok(nodeService.getNodeCpuMetrics());
+    }
 
     @GetMapping("/{id}")
     public ResponseEntity<NodeDTO> getNodeById(@PathVariable String id) {
@@ -70,13 +73,16 @@ public class NodeController {
         return ResponseEntity.ok(dto);
     }
 
-    @GetMapping("/distances")
-    public ResponseEntity<List<NodeDistanceDTO>> getAreaNodeDistances() {
-        return ResponseEntity.ok(nodeService.getAreaNodeDistances());
+    /**
+     * Aggiorna le coordinate GPS (Lat, Lon) e il brokerUrl del nodo logico.
+     * Usato dalla Dashboard quando l'utente posiziona il nodo sulla mappa.
+     * Non viene usato dall'utente per aggiornare il broker
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<NodeDTO> updateNode(@PathVariable String id, @RequestBody NodeDTO nodeDTO) {
+        NodeDTO updated = nodeService.updateNodeLocationAndBroker(id, nodeDTO);
+        return ResponseEntity.ok(updated);
     }
 
-    @GetMapping("/allocations")
-    public ResponseEntity<Map<String, List<String>>> getNodePodAllocations() {
-        return ResponseEntity.ok(nodeService.getNodePodAllocations());
-    }
+
 }

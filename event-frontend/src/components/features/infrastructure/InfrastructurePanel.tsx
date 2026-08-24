@@ -2,7 +2,15 @@ import React, { useEffect, useState } from 'react';
 import type { NodeDTO, MigrationDTO } from '../../../types';
 import { migrationApi } from '../../../api/migrationApi';
 import { nodeApi } from '../../../api/nodeApi';
+import fetchClient from '../../../api/client';
 import { Card, CardHeader, CardBody } from '../../ui/Card';
+
+interface NodeDistanceDTO {
+  areaName: string;
+  nodeId: string;
+  distanceMeters: number;
+  estimatedIngressLatencyMs: number;
+}
 
 interface InfrastructurePanelProps {
   nodes: NodeDTO[];
@@ -12,24 +20,30 @@ interface InfrastructurePanelProps {
 const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefreshNeeded }) => {
   const [migrations, setMigrations] = useState<MigrationDTO[]>([]);
   const [allocations, setAllocations] = useState<Record<string, string[]>>({});
+  const [cpuMetrics, setCpuMetrics] = useState<Record<string, number>>({});
+  const [distances, setDistances] = useState<NodeDistanceDTO[]>([]);
   const [syncingK8s, setSyncingK8s] = useState<boolean>(false);
-  
-  const fetchAllocationsAndMigrations = async () => {
+
+  const fetchInfrastructureData = async () => {
     try {
-      const [migs, allocs] = await Promise.all([
+      const [migs, allocs, cpus, dists] = await Promise.all([
         migrationApi.getAllMigrations().catch(() => []),
-        nodeApi.getNodeAllocations().catch(() => ({}))
+        nodeApi.getNodeAllocations().catch(() => ({})),
+        nodeApi.getNodeCpuMetrics().catch(() => ({})),
+        fetchClient<NodeDistanceDTO[]>('/api/nodes/distances', { method: 'GET' }).catch(() => [])
       ]);
       setMigrations(migs);
       setAllocations(allocs);
+      setCpuMetrics(cpus);
+      setDistances(dists);
     } catch (e) {
       console.error('Errore nel recupero dati infrastruttura', e);
     }
   };
 
   useEffect(() => {
-    fetchAllocationsAndMigrations();
-    const interval = setInterval(fetchAllocationsAndMigrations, 4000);
+    fetchInfrastructureData();
+    const interval = setInterval(fetchInfrastructureData, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -38,7 +52,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
     try {
       await nodeApi.syncK8sNodes();
       if (onRefreshNeeded) onRefreshNeeded();
-      await fetchAllocationsAndMigrations();
+      await fetchInfrastructureData();
     } catch (e) {
       console.error('Errore sync K8s', e);
       alert('Errore durante la sincronizzazione con Kubernetes');
@@ -50,52 +64,110 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
   const handleClearMigrations = async () => {
     if (confirm('Vuoi davvero cancellare lo storico delle migrazioni?')) {
       await migrationApi.deleteAllMigrations();
-      fetchAllocationsAndMigrations();
+      fetchInfrastructureData();
     }
+  };
+
+  // Helper per estrarre il nome pulito dell'Area dal nome del Pod di K8s
+  // Es: "event-analysis-stage-699ffbb9f6-tpg8d" -> "stage"
+  const extractAreaName = (podName: string): string => {
+    return podName
+      .replace(/^event-analysis-/, '')
+      .replace(/-[a-z0-9]{8,10}-[a-z0-9]{5}$/, '');
+  };
+
+  // Helper per recuperare la latenza stimata tra Area e Nodo
+  const getPodLatency = (podNameOrArea: string, nodeId: string): string => {
+    const cleanArea = extractAreaName(podNameOrArea);
+    
+    const entry = distances.find(d => 
+      (d.areaName.toLowerCase() === cleanArea.toLowerCase() || 
+      podNameOrArea.includes(`event-analysis-${d.areaName}`)) && 
+      d.nodeId === nodeId
+    );
+
+    if (!entry) {
+      return nodeId.toLowerCase().includes('cloud') ? '40.0 ms' : '~1.0 ms';
+    }
+    
+    return `${entry.estimatedIngressLatencyMs.toFixed(1)} ms`;
+  };
+
+  const getCpuBadgeColor = (cpuPercent: number) => {
+    if (cpuPercent >= 75) return 'bg-danger text-white';
+    if (cpuPercent >= 50) return 'bg-warning text-dark';
+    return 'bg-success-subtle text-success border border-success-subtle';
   };
 
   return (
     <div className="row g-3">
-      {/* Colonna Sinistra: Nodi e Pod Allocati (Espansa al 100% senza scrollbar) */}
+      {/* Colonna Sinistra: Nodi, Pod Allocati e CPU Load */}
       <div className="col-md-5">
         <Card className="h-100">
           <CardHeader className="bg-secondary text-white d-flex justify-content-between align-items-center">
             <h6 className="mb-0 fw-bold">Infrastruttura Nodi & Pod Allocati</h6>
-            <button 
-              className="btn btn-sm btn-light py-0 px-2" 
-              onClick={handleSyncK8s} 
-              disabled={syncingK8s}
-              title="Sincronizza stato da Kubernetes"
-            >
-              {syncingK8s ? 'Syncing...' : 'Sync K8s'}
-            </button>
           </CardHeader>
           <CardBody className="p-3">
             <div className="row g-2">
               {nodes.map(node => {
                 const isEdge = node.type === 'EDGE';
                 const hostedPods = allocations[node.id || ''] || [];
+                const cpuPercent = cpuMetrics[node.id || ''] ?? 0;
 
                 return (
                   <div key={node.id || node.name} className="col-12">
                     <div className={`p-2 border rounded ${isEdge ? 'border-primary-subtle bg-light' : 'border-info-subtle bg-white'}`}>
                       <div className="d-flex justify-content-between align-items-center mb-1">
-                        <strong>{node.name} <span className="text-muted small">({node.id})</span></strong>
-                        <span className={`badge ${isEdge ? 'bg-primary' : 'bg-dark'}`}>{node.type}</span>
+                        {/* Intestazione Nodo Pulita (Senza ID duplicato) */}
+                        <div className="d-flex align-items-center gap-2">
+                          <strong className="text-dark">{node.name}</strong>
+                          <span className={`badge ${isEdge ? 'bg-primary' : 'bg-dark'}`}>{node.type}</span>
+                        </div>
+                        
+                        {/* Carico CPU */}
+                        <div className="d-flex align-items-center gap-1">
+                          <span className="small text-muted">CPU:</span>
+                          <span className={`badge ${getCpuBadgeColor(cpuPercent)}`}>
+                            {cpuPercent.toFixed(1)}%
+                          </span>
+                        </div>
                       </div>
+
+                      {/* Barra di avanzamento CPU */}
+                      <div className="progress mb-2" style={{ height: '4px' }}>
+                        <div 
+                          className={`progress-bar ${cpuPercent >= 75 ? 'bg-danger' : cpuPercent >= 50 ? 'bg-warning' : 'bg-success'}`} 
+                          role="progressbar" 
+                          style={{ width: `${Math.min(100, cpuPercent)}%` }} 
+                        />
+                      </div>
+
                       <div className="text-muted small mb-1">
                         <code>{node.brokerUrl}</code> | GPS: [{node.latitude.toFixed(4)}, {node.longitude.toFixed(4)}]
                       </div>
-                      <div className="d-flex align-items-center gap-1 flex-wrap mt-1">
+
+                      {/* Pod Allocati con Latenza di Ingresso Reale da PostGIS */}
+                      <div className="d-flex align-items-center gap-1 flex-wrap mt-2">
                         <span className="small text-secondary me-1">Pod attivi ({hostedPods.length}):</span>
                         {hostedPods.length === 0 ? (
                           <span className="text-muted small fst-italic">Nessun Pod</span>
                         ) : (
-                          hostedPods.map(podName => (
-                            <span key={podName} className="badge bg-success-subtle text-success border border-success-subtle">
-                              {podName.replace('event-analysis-', '')}
-                            </span>
-                          ))
+                          hostedPods.map(podName => {
+                            const displayAreaName = extractAreaName(podName);
+                            const latencyStr = getPodLatency(podName, node.id || '');
+                            return (
+                              <span 
+                                key={podName} 
+                                className="badge bg-white text-dark border d-inline-flex align-items-center gap-1 py-1 px-2 shadow-sm"
+                                title={`Latenza stimata PostGIS (${displayAreaName} -> ${node.id}): ${latencyStr}`}
+                              >
+                                <span className="text-primary fw-bold">{displayAreaName}</span>
+                                <span className="badge bg-info-subtle text-info-emphasis rounded-pill" style={{ fontSize: '0.75rem' }}>
+                                  {latencyStr}
+                                </span>
+                              </span>
+                            );
+                          })
                         )}
                       </div>
                     </div>
@@ -107,7 +179,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
         </Card>
       </div>
 
-      {/* Colonna Destra: Audit Log Migrazioni Orchestratore */}
+      {/* Colonna Destra: Audit Log Migrazioni */}
       <div className="col-md-7">
         <Card className="h-100 d-flex flex-column">
           <CardHeader className="bg-dark text-white d-flex justify-content-between align-items-center">
