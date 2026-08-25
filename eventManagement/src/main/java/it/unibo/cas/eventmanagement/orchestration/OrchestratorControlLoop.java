@@ -119,10 +119,23 @@ public class OrchestratorControlLoop {
 
             // Se non è sul suo nodo statico ottimale (es. all'avvio o dopo un ripristino guasto), spostalo
             if (!targetStaticNode.equals(currentNode)) {
-                logger.info(" [STATIC-POLICY] Assegnazione statica Area '{}': {} -> {} (Edge naturale più vicino)",
+                logger.info(" [STATIC-POLICY] Assegnazione statica Area '{}': {} -> {}",
                         area.getName(), currentNode, targetStaticNode);
             
                 boolean success = kubernetesOrchestrationService.migratePodToNode(area.getName(), targetStaticNode);
+
+                String sanitizedAreaId = area.getName().toLowerCase().replaceAll("[^a-z0-9-]", "-");
+                migrationService.recordMigration(
+                    area.getName(),
+                    "event-analysis-" + sanitizedAreaId,
+                    currentNode != null ? currentNode : "unknown",
+                    targetStaticNode,
+                    null,
+                    null,
+                    "Static nearest edge assignment",
+                    success,
+                    success ? null : "K8s patch failed"
+                );
             }
         }
     }

@@ -216,6 +216,7 @@ const MonitoringMap: React.FC<MonitoringMapProps> = (props) => {
       setIsCtrlPressed(false);
     };
 
+    // Agganciamo gli ascoltatori al browser
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
@@ -242,7 +243,7 @@ const MonitoringMap: React.FC<MonitoringMapProps> = (props) => {
         className={`position-absolute bottom-0 start-0 m-2 px-2 py-1 rounded small ${isCtrlPressed ? 'bg-success text-white' : 'bg-dark text-white opacity-75'}`}
         style={{ zIndex: 1000, pointerEvents: 'none', fontSize: '0.75rem' }}
       >
-        {isCtrlPressed ? '✔ Mappa sbloccata (Trascina / Zoom attivo)' : '💡 Tieni premuto CTRL per muovere la mappa o zoomare'}
+        {isCtrlPressed ? 'Mappa sbloccata (Trascina / Zoom attivo)' : 'Tieni premuto CTRL per muovere la mappa o zoomare'}
       </div>
 
       <MapContainer

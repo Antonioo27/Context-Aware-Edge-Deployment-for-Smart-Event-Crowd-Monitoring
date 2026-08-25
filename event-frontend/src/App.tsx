@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import CreateEvent from './components/features/event/CreateEvent'
 import Dashboard from './components/features/dashboard/Dashboard'
+import PolicySelector from './components/features/policy/PolicySelector'
 import { eventApi } from './api/eventApi'
 import type { Event } from './types'
 
@@ -26,7 +27,6 @@ function App() {
   }, []);
 
   const handleSkipToDashboard = () => {
-    // Imposta un evento fittizio per sbloccare la visualizzazione completa
     setEventData({
       id: 'active',
       name: 'Smart Event Monitoring',
@@ -48,25 +48,34 @@ function App() {
 
   return (
     <div className="container-fluid py-3">
-      <header className="pb-3 mb-4 border-bottom d-flex justify-content-between align-items-center">
+      <header className="pb-3 mb-4 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div className="d-flex align-items-center text-dark text-decoration-none">
-          <span className="fs-4">
+          <span className="fs-4 fw-bold">
             {eventData ? `Pannello di Controllo: ${eventData.name}` : "Event Management Dashboard"}
           </span>
         </div>
+
         {eventData && (
-          <button className="btn btn-outline-danger btn-sm" onClick={async () => {
-             if (confirm('Vuoi davvero eliminare questo evento e resettare tutto?')) {
-               try {
-                 await eventApi.deleteEvent();
-               } catch (e) {
-                 console.error(e);
-               }
-               setEventData(null);
-             }
-          }}>
-            Elimina / Cambia Evento
-          </button>
+          <div className="d-flex align-items-center gap-3">
+            {/* Menu a tendina per la politica dell'orchestratore */}
+            <PolicySelector />
+
+            <button 
+              className="btn btn-outline-danger btn-sm" 
+              onClick={async () => {
+                if (confirm('Vuoi davvero eliminare questo evento e resettare tutto?')) {
+                  try {
+                    await eventApi.deleteEvent();
+                  } catch (e) {
+                    console.error(e);
+                  }
+                  setEventData(null);
+                }
+              }}
+            >
+              Elimina / Cambia Evento
+            </button>
+          </div>
         )}
       </header>
 

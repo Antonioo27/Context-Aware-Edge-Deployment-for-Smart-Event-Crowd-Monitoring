@@ -137,7 +137,7 @@ class SimConfig:
     batch_max_seconds: float = 1.0
 
     # REST Backend URL
-    backend_url: str = "http://localhost:8080"
+    backend_url: str = "http://192.168.58.2:30080"
 
     # --- Ground truth ---
     ground_truth_path: str = "ground_truth.csv"

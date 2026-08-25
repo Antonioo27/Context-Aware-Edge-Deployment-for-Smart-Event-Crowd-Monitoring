@@ -5,11 +5,14 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        // Sostituisci con l'IP restituito da "minikube -p edge-cluster ip"
+        target: 'http://192.168.58.2:30080',
         changeOrigin: true,
+        secure: false,
       },
     },
   },
-})
+});
