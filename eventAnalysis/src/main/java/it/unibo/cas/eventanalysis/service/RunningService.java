@@ -16,8 +16,10 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -77,6 +79,7 @@ public class RunningService {
             log.warn("[AREA {}] Broker unreachable during startup: will keep trying in background", area.id());
         }
 
+        double windowSeconds = analysisService.getWindowSize();
         long windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
         long nextStats = System.nanoTime() + windowNanos;
 
@@ -84,6 +87,20 @@ public class RunningService {
             ProbeBatch batch = subscriber.get(1, TimeUnit.SECONDS);
 
             if (batch != null) {
+                subscriber.ack(batch);
+
+                OffsetDateTime now = OffsetDateTime.now();
+                OffsetDateTime batchTime = batch.getSentAt() != null ? batch.getSentAt() : now;
+                long ageSeconds = Duration.between(batchTime, now).getSeconds();
+
+                // Filtro temporale, se batch è più vecchio della finestra di osservazione W è un residuo
+                if (ageSeconds > (long) windowSeconds || ageSeconds < -5) {
+                    log.warn("[AREA {}] Drained STALE batch id={} (age: {}s > window: {}s) - Discarded from calculation",
+                            area.id(), batch.getBatchId(), ageSeconds, (long) windowSeconds);
+                    lastProcessedBatch = batch;
+                    continue;
+                }
+
                 int rawProbeCount = batch.getProbes() != null ? batch.getProbes().size() : 0;
 
                 if (!batchService.batchIsLast(batch, lastProcessedBatch)) {
@@ -99,17 +116,19 @@ public class RunningService {
                         area.id(), batch.getBatchId(), rawProbeCount, filteredProbeCount,
                         String.format(java.util.Locale.US, "%.1f", batch.getTransportLatencyMs()));
                 
-                subscriber.ack(batch);
+                
                 probeBatches.add(batch);
                 lastProcessedBatch = batch;
             }
 
-            long now = System.nanoTime();
-            if (now >= nextStats) {
+            long currentNanos = System.nanoTime();
+            if (currentNanos >= nextStats) {
                 log.info("[AREA {}] Window timer expired. Total accumulated batches in window: {}", area.id(), probeBatches.size());
                 log.info("[AREA {}] Transport stats: {}", area.id(), subscriber.getStatsSnapshot());
                 windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
-                nextStats = now + windowNanos;
+                nextStats = currentNanos + windowNanos;
+
+                purgeExpiredBatches(analysisService.getWindowSize());
 
                 if (!probeBatches.isEmpty()) {
                     AnalysisStats analysisStats = doAnalysis();
@@ -148,6 +167,23 @@ public class RunningService {
         log.info("[AREA {}] Final summary: {}", area.id(), subscriber.getStatsSnapshot());
     }
     
+    /**
+     * Rimuove dalla memoria i batch il cui timestamp reale è più vecchio di windowSeconds rispetto ad ora.
+     */
+    private void purgeExpiredBatches(double windowSeconds) {
+        OffsetDateTime cutoff = OffsetDateTime.now().minusSeconds((long) windowSeconds);
+        int initialSize = probeBatches.size();
+
+        // Rimuove in un solo passaggio tutti i batch inviati prima del tempo limite
+        probeBatches.removeIf(b -> b.getSentAt() != null && b.getSentAt().isBefore(cutoff));
+
+        int removedCount = initialSize - probeBatches.size();
+        if (removedCount > 0) {
+            log.info("[AREA {}] Purged {} expired batches from window buffer", area.id(), removedCount);
+        }
+    }
+
+
     private AnalysisStats doAnalysis() {
         long estimatedPeople = analysisService.estimatePeople(probeBatches);
         double density = analysisService.density(estimatedPeople);
