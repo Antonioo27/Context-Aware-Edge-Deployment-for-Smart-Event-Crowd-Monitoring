@@ -40,7 +40,7 @@ def fetch_dynamic_areas(backend_url: str):
         
         dynamic_areas = [
             AreaConfig(
-                area_id=area["name"].lower().replace(" ", "_"),
+                area_id=area["name"],
                 sensor_id=f"ap-{area['name'].lower().replace(' ', '_')}-01",
                 capacity=area.get("capacity", 500),
                 area_type=area.get("type", "GENERIC"),

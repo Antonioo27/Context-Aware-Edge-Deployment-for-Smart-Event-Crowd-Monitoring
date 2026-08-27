@@ -5,7 +5,7 @@ export const alertApi = {
   getAlerts: (userType: UserType) =>
     fetchClient<NotifyDTO[]>(`/api/event/notify-${userType.toLowerCase()}`, { method: 'POST' }),
   sendManualAlert: (alert: ManualAlertDTO) =>
-    fetchClient<string>('/api/event/manual-alert', { 
+    fetchClient<string>('/api/event/area/manual-alert', { 
       method: 'POST', 
       body: JSON.stringify(alert) 
     })

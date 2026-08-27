@@ -11,9 +11,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import it.unibo.cas.eventmanagement.exception.ResourceNotFoundException;
 
 @Service
@@ -24,6 +24,7 @@ public class AreaService {
     @Autowired
     private AreaRepository areaRepository;
     @Autowired
+    @Lazy
     private EventService eventService;
 
     @Transactional
@@ -131,5 +132,9 @@ public class AreaService {
         Area area = areaRepository.getAreaByName(areaName);
         area.setState(state);
         areaRepository.save(area);
+    }
+
+    public void deleteAreas() {
+        areaRepository.deleteAll();
     }
 }

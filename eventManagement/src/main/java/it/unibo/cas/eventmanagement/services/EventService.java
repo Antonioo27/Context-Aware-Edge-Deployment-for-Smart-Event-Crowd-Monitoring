@@ -3,6 +3,7 @@ package it.unibo.cas.eventmanagement.services;
 import it.unibo.cas.eventmanagement.models.DTOs.EventDTO;
 import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.entities.Event;
+import it.unibo.cas.eventmanagement.orchestration.KubernetesOrchestrationService;
 import it.unibo.cas.eventmanagement.repositories.EventRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +15,16 @@ import java.util.ArrayList;
 public class EventService {
     @Autowired
     private EventRepository eventRepository;
+    @Autowired
+    private AlertService alertService;
+    @Autowired
+    private AnalysisService analysisService;
+    @Autowired
+    private AreaService areaService;
+    @Autowired
+    private NotifyService notifyService;
+    @Autowired
+    private KubernetesOrchestrationService kubernetesOrchestrationService;
 
     public Event getEvent() {
         return eventRepository.findAll().getFirst();
@@ -42,6 +53,11 @@ public class EventService {
     }
 
     public void deleteEvent() {
+        notifyService.deleteNotifications();
+        alertService.deleteAlerts();
+        analysisService.deleteAnalysis();
+        areaService.deleteAreas();
         eventRepository.deleteAll();
+        kubernetesOrchestrationService.removeAllDeployAnalysis();
     }
 }

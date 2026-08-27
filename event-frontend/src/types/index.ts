@@ -69,9 +69,25 @@ export const State = {
 
 export type State = (typeof State)[keyof typeof State];
 
+export const AlertType = {
+  MANUAL: "MANUAL",
+  AUTOMATIC: "AUTOMATIC",
+  PREDICTION: "PREDICTION"
+} as const;
+
+export type AlertType = (typeof AlertType)[keyof typeof AlertType];
+
+export interface AlertDTO {
+  cause: string;
+  ts: string;
+  lon?: number;
+  lat?: number;
+  alertType?: AlertType;
+}
+
 export interface NotifyDTO {
   message: string;
-  alert: any; // We can type this better later if needed
+  alert: AlertDTO;
   priority: Priority;
 }
 

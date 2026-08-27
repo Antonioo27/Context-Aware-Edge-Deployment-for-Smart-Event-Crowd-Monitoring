@@ -2,6 +2,7 @@ package it.unibo.cas.eventmanagement.models.entities;
 
 
 import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
+import it.unibo.cas.eventmanagement.models.enums.AlertType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -23,4 +24,7 @@ public class Alert{
     private String areaId;
     private OffsetDateTime ts;
     private String cause;
+
+    @Enumerated(EnumType.STRING)
+    private AlertType alertType;
 }

@@ -32,26 +32,31 @@ public class AlertService {
         if(stats == null || stats.isEmpty()) 
             return null;
 
-        int consecutiveHighlyRising = 0;
-        for (int i = stats.size() - 1; i >= 0; i--) {
+        int dangerScore = 0;
+        // Analizziamo al massimo le ultime 3 finestre temporali
+        int recentWindows = Math.min(stats.size(), 3); 
+        
+        for (int i = stats.size() - 1; i >= stats.size() - recentWindows; i--) {
             AnalysisStats stat = stats.get(i);
             if (stat.getTrend() == Trend.HIGHLY_RISING) {
-                consecutiveHighlyRising++;
-            } else {
-                // La sequenza consecutiva si interrompe
-                break;
+                dangerScore += 2;
+            } else if (stat.getTrend() == Trend.RISING) {
+                dangerScore += 1;
+            } else if (stat.getTrend() == Trend.DOWNING) {
+                dangerScore -= 1;
+            } else if (stat.getTrend() == Trend.HIGHLY_DOWNING) {
+                dangerScore -= 2;
             }
         }
 
-        // Scatta l'alert al 3°, 4°, 5°... HIGHLY_RISING consecutivo
-        if (consecutiveHighlyRising >= 3) {
+        // Scatta l'alert in modo più facile: basta 1 HIGHLY_RISING o 2 RISING recenti
+        if (dangerScore >= 2) {
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())
-                    .cause("The trend of the crowd is highly rising in this area (consecutive: " + consecutiveHighlyRising + ")")
+                    .cause("Il trend della folla in quest'area è in forte crescita (Danger Score: " + dangerScore + "/3)")
                     .build();
         }
-        
         
         return null;
     }

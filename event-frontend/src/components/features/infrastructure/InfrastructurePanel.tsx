@@ -14,15 +14,16 @@ interface NodeDistanceDTO {
 
 interface InfrastructurePanelProps {
   nodes: NodeDTO[];
-  onRefreshNeeded?: () => void;
+//  onRefreshNeeded?: () => void;
 }
 
-const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefreshNeeded }) => {
+//const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefreshNeeded }) => {
+const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes }) => {
   const [migrations, setMigrations] = useState<MigrationDTO[]>([]);
   const [allocations, setAllocations] = useState<Record<string, string[]>>({});
   const [cpuMetrics, setCpuMetrics] = useState<Record<string, number>>({});
   const [distances, setDistances] = useState<NodeDistanceDTO[]>([]);
-  const [syncingK8s, setSyncingK8s] = useState<boolean>(false);
+//  const [syncingK8s, setSyncingK8s] = useState<boolean>(false);
 
   const fetchInfrastructureData = async () => {
     try {
@@ -47,19 +48,19 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
     return () => clearInterval(interval);
   }, []);
 
-  const handleSyncK8s = async () => {
-    setSyncingK8s(true);
-    try {
-      await nodeApi.syncK8sNodes();
-      if (onRefreshNeeded) onRefreshNeeded();
-      await fetchInfrastructureData();
-    } catch (e) {
-      console.error('Errore sync K8s', e);
-      alert('Errore durante la sincronizzazione con Kubernetes');
-    } finally {
-      setSyncingK8s(false);
-    }
-  };
+//  const handleSyncK8s = async () => {
+//    setSyncingK8s(true);
+//    try {
+//      await nodeApi.syncK8sNodes();
+//      if (onRefreshNeeded) onRefreshNeeded();
+//      await fetchInfrastructureData();
+//    } catch (e) {
+//      console.error('Errore sync K8s', e);
+//      alert('Errore durante la sincronizzazione con Kubernetes');
+//    } finally {
+//      setSyncingK8s(false);
+//    }
+//  };
 
   const handleClearMigrations = async () => {
     if (confirm('Vuoi davvero cancellare lo storico delle migrazioni?')) {

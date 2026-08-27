@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { UserType } from '../../../types';
+import { UserType, AlertType } from '../../../types';
 import type { ManualAlertDTO } from '../../../types';
 import { alertApi } from '../../../api/alertApi';
 import { useAlerts } from '../../../hooks/useAlerts';
@@ -19,6 +19,7 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
   setManualAlertLocation
 }) => {
   const [selectedUserType, setSelectedUserType] = useState<UserType>(UserType.USER);
+  const [selectedAlertType, setSelectedAlertType] = useState<AlertType | 'ALL'>('ALL');
   const { alerts, loading, refreshAlerts } = useAlerts(selectedUserType);
   
   const [cause, setCause] = useState('');
@@ -28,12 +29,14 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
 
   // Ordina gli alert dal più recente al meno recente (ts decrescente)
   const sortedAlerts = useMemo(() => {
-    return [...alerts].sort((a, b) => {
-      const timeA = a.alert?.ts ? new Date(a.alert.ts).getTime() : 0;
-      const timeB = b.alert?.ts ? new Date(b.alert.ts).getTime() : 0;
-      return timeB - timeA;
-    });
-  }, [alerts]);
+    return [...alerts]
+      .filter(a => selectedAlertType === 'ALL' || a.alert?.alertType === selectedAlertType)
+      .sort((a, b) => {
+        const timeA = a.alert?.ts ? new Date(a.alert.ts).getTime() : 0;
+        const timeB = b.alert?.ts ? new Date(b.alert.ts).getTime() : 0;
+        return timeB - timeA;
+      });
+  }, [alerts, selectedAlertType]);
 
   // Sincronizza coordinate GPS dalla mappa
   useEffect(() => {
@@ -80,18 +83,35 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
       <CardBody className="d-flex flex-column p-0" style={{ height: '700px' }}>
         
         <div className="p-3 border-bottom">
-          <label htmlFor="userTypeSelect" className="form-label fw-bold">Seleziona Tipo Utente:</label>
-          <select 
-            id="userTypeSelect" 
-            className="form-select" 
-            value={selectedUserType} 
-            onChange={(e) => setSelectedUserType(e.target.value as UserType)}
-            data-testid="user-type-select"
-          >
-            {Object.values(UserType).map(ut => (
-              <option key={ut} value={ut}>{ut}</option>
-            ))}
-          </select>
+          <div className="mb-2">
+            <label htmlFor="userTypeSelect" className="form-label fw-bold">Seleziona Tipo Utente:</label>
+            <select 
+              id="userTypeSelect" 
+              className="form-select" 
+              value={selectedUserType} 
+              onChange={(e) => setSelectedUserType(e.target.value as UserType)}
+              data-testid="user-type-select"
+            >
+              {Object.values(UserType).map(ut => (
+                <option key={ut} value={ut}>{ut}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="alertTypeSelect" className="form-label fw-bold">Filtra per Tipo Alert:</label>
+            <select 
+              id="alertTypeSelect" 
+              className="form-select" 
+              value={selectedAlertType} 
+              onChange={(e) => setSelectedAlertType(e.target.value as AlertType | 'ALL')}
+              data-testid="alert-type-select"
+            >
+              <option value="ALL">Tutti</option>
+              {Object.values(AlertType).map(at => (
+                <option key={at} value={at}>{at}</option>
+              ))}
+            </select>
+          </div>
         </div>
         
         <div className="flex-grow-1 overflow-auto p-3">
@@ -109,9 +129,16 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
                       {notify.alert?.ts ? new Date(notify.alert.ts).toLocaleTimeString() : ''}
                     </small>
                   </div>
-                  <small className="text-secondary d-block">
-                    {notify.alert?.ts ? new Date(notify.alert.ts).toLocaleDateString() : ''}
-                  </small>
+                  <div className="d-flex justify-content-between align-items-center">
+                    <small className="text-secondary">
+                      {notify.alert?.ts ? new Date(notify.alert.ts).toLocaleDateString() : ''}
+                    </small>
+                    {notify.alert?.alertType && (
+                      <span className="badge bg-secondary" style={{ fontSize: '0.65rem' }}>
+                        {notify.alert.alertType}
+                      </span>
+                    )}
+                  </div>
                   <p className="mb-0 mt-1 small">{notify.message}</p>
                 </li>
               ))}

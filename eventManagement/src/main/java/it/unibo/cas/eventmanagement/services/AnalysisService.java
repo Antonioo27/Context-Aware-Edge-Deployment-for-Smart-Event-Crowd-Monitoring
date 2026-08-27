@@ -2,6 +2,7 @@ package it.unibo.cas.eventmanagement.services;
 
 import it.unibo.cas.eventmanagement.models.DTOs.PredictionPointDTO;
 import it.unibo.cas.eventmanagement.models.entities.AnalysisStats;
+import it.unibo.cas.eventmanagement.models.enums.AlertType;
 import it.unibo.cas.eventmanagement.models.enums.State;
 import it.unibo.cas.eventmanagement.repositories.AnalysisStatsRepository;
 import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
@@ -99,6 +100,7 @@ public class AnalysisService {
                 AlertDTO alertDTO = AlertDTO.builder()
                         .area_id(latestStats.getAreaId())
                         .ts(OffsetDateTime.now())
+                        .alertType(AlertType.PREDICTION)
                         .cause(String.format(
                                 "Predizione: l'area supererà la soglia critica tra %d minuti. (Stima: %d persone)",
                                 predictionHorizonMinutes, predictedPeople.intValue()))
@@ -184,5 +186,9 @@ public class AnalysisService {
         int stepSeconds = latestStats.getWindowSeconds() > 0 ? latestStats.getWindowSeconds() : 20;
 
         return LinearRegressionPredictor.predictFutureTrend(history, predictionHorizonMinutes, stepSeconds);
+    }
+
+    public void deleteAnalysis() {
+        analysisStatsRepository.deleteAll();
     }
 }

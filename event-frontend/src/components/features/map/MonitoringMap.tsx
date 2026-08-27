@@ -96,11 +96,13 @@ const MapContent: React.FC<MonitoringMapProps & { isCtrlPressed: boolean }> = ({
     drawnItems.clearLayers();
 
     nodes.forEach((node: NodeDTO) => {
-      const marker = L.marker([node.latitude, node.longitude]);
+      const marker = L.marker([node.latitude, node.longitude], { interactive: !manualAlertMode });
       (marker as any).backendId = node.id;
       (marker as any).isNode = true;
       (marker as any).dto = node;
-      marker.bindPopup(`<b>Nodo:</b> ${node.name}<br/><b>Tipo:</b> ${node.type}`);
+      if (!manualAlertMode) {
+        marker.bindPopup(`<b>Nodo:</b> ${node.name}<br/><b>Tipo:</b> ${node.type}`);
+      }
       drawnItems.addLayer(marker);
     });
 
@@ -109,17 +111,22 @@ const MapContent: React.FC<MonitoringMapProps & { isCtrlPressed: boolean }> = ({
         const latlngs = area.boundary.coordinates[0].map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
         
         const style = getStateColor(area.state);
-        const polygon = L.polygon(latlngs, style);
+        const polygon = L.polygon(latlngs, {
+          ...style,
+          interactive: !manualAlertMode
+        });
         
         (polygon as any).backendId = area.name;
         (polygon as any).isArea = true;
         (polygon as any).dto = area;
-        polygon.bindPopup(`<b>Area:</b> ${area.name}<br/><b>Capacità:</b> ${area.capacity}<br/><b>Stato:</b> ${area.state || 'NONE'}`);
+        if (!manualAlertMode) {
+          polygon.bindPopup(`<b>Area:</b> ${area.name}<br/><b>Capacità:</b> ${area.capacity}<br/><b>Stato:</b> ${area.state || 'NONE'}`);
+        }
         drawnItems.addLayer(polygon);
       }
     });
 
-  }, [map, areas, nodes]);
+  }, [map, areas, nodes, manualAlertMode]);
 
   useEffect(() => {
     const handleCreated = (e: any) => {

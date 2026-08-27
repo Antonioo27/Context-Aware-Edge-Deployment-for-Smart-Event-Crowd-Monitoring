@@ -1,5 +1,6 @@
 package it.unibo.cas.eventmanagement.orchestration;
 
+import io.fabric8.kubernetes.api.model.StatusDetails;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 
 import org.slf4j.Logger;
@@ -19,7 +20,7 @@ import java.util.Objects;
 
 @Service
 public class KubernetesOrchestrationService {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(KubernetesOrchestrationService.class);
 
     @Autowired
@@ -40,8 +41,25 @@ public class KubernetesOrchestrationService {
         InputStream inputStream = new ByteArrayInputStream(finalYaml.getBytes());
         // Metodo moderno e raccomandato da Fabric8
         client.load(inputStream)
-          .forceConflicts()
-          .serverSideApply();
+                .forceConflicts()
+                .serverSideApply();
+    }
+
+    public Boolean removeAllDeployAnalysis() {
+        try {
+            String currentNamespace = client.getNamespace();
+            String deploymentName = "event-analysis";
+
+            // remove all deployment with label "event-analysis"
+            List<StatusDetails> result = client.apps().deployments()
+                    .inNamespace(currentNamespace)
+                    .withLabel("app", deploymentName)
+                    .delete();
+
+            return result != null && !result.isEmpty();
+        } catch (KubernetesClientException e) {
+            throw new RuntimeException("Error during the deletion of the deployment: " + e.getMessage(), e);
+        }
     }
 
     public Boolean removeAnalysisForArea(String area_name) {
@@ -49,7 +67,7 @@ public class KubernetesOrchestrationService {
             String currentNamespace = client.getNamespace();
             String deploymentName = "event-analysis-" + getSanitizedId(area_name);
 
-            List<io.fabric8.kubernetes.api.model.StatusDetails> result = client.apps().deployments()
+            List<StatusDetails> result = client.apps().deployments()
                     .inNamespace(currentNamespace)
                     .withName(deploymentName)
                     .delete();
@@ -80,14 +98,13 @@ public class KubernetesOrchestrationService {
 
                 // 2. Verifica se il nodo è stato cordonato (unschedulable = true)
                 boolean isUnschedulable = node.getSpec() != null &&
-                    Boolean.TRUE.equals(node.getSpec().getUnschedulable());
+                        Boolean.TRUE.equals(node.getSpec().getUnschedulable());
 
                 boolean isHealthyAndSchedulable = isReady && !isUnschedulable;
 
                 statusMap.put(nodeId, isHealthyAndSchedulable);
             }
-        }
-        catch (KubernetesClientException e) {
+        } catch (KubernetesClientException e) {
             System.err.println(" [ORCHESTRATOR] Errore nel recupero dello stato dei nodi: " + e.getMessage());
         }
         return statusMap;
@@ -102,21 +119,21 @@ public class KubernetesOrchestrationService {
                     .inNamespace(client.getNamespace())
                     .withName(deploymentName)
                     .get();
-            
+
             if (deployment != null && deployment.getSpec() != null) {
                 Map<String, String> nodeSelector = deployment.getSpec()
-                                        .getTemplate()
-                                        .getSpec()
-                                        .getNodeSelector();
-                
+                        .getTemplate()
+                        .getSpec()
+                        .getNodeSelector();
+
                 if (nodeSelector != null && nodeSelector.containsKey("node-id")) {
                     return nodeSelector.get("node-id");
                 }
             }
         } catch (Exception e) {
-            
+
         }
-        return "node-cloud"; //Fallback
+        return "node-cloud"; // Fallback
     }
 
     public boolean migratePodToNode(String areaName, String targetNodeId) {
@@ -128,18 +145,19 @@ public class KubernetesOrchestrationService {
             // Patch JSON mirata: modifica esclusivamente il node-id nel nodeSelector
             String patchJson = String.format(
                     "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"node-id\":\"%s\"}}}}}",
-                    targetNodeId
-            );
+                    targetNodeId);
 
             client.apps().deployments()
                     .inNamespace(namespace)
                     .withName(deploymentName)
                     .patch(patchJson);
 
-            logger.info(" [ORCHESTRATOR] Migrazione applicata con successo su K8s per Area '{}' -> Node: {}", areaName, targetNodeId);
+            logger.info(" [ORCHESTRATOR] Migrazione applicata con successo su K8s per Area '{}' -> Node: {}", areaName,
+                    targetNodeId);
             return true;
         } catch (Exception e) {
-            logger.error(" [ORCHESTRATOR] Errore durante la migrazione dell'area '{}' su nodo '{}': {}", areaName, targetNodeId, e.getMessage());
+            logger.error(" [ORCHESTRATOR] Errore durante la migrazione dell'area '{}' su nodo '{}': {}", areaName,
+                    targetNodeId, e.getMessage());
             return false;
         }
     }
@@ -156,15 +174,18 @@ public class KubernetesOrchestrationService {
 
                 var k8sNode = client.nodes().withName(nodeName).get();
                 String nodeId = (k8sNode != null && k8sNode.getMetadata().getLabels().containsKey("node-id"))
-                    ? k8sNode.getMetadata().getLabels().get("node-id")
-                    : nodeName;
-                
+                        ? k8sNode.getMetadata().getLabels().get("node-id")
+                        : nodeName;
+
                 var usageQuantity = metric.getUsage().get("cpu");
-                double usageMillicores = usageQuantity != null ? usageQuantity.getNumericalAmount().doubleValue() * 1000.0 : 0.0;
+                double usageMillicores = usageQuantity != null
+                        ? usageQuantity.getNumericalAmount().doubleValue() * 1000.0
+                        : 0.0;
 
                 double allocatableMillicores = 2000.0;
                 if (k8sNode != null && k8sNode.getStatus().getAllocatable().containsKey("cpu")) {
-                    allocatableMillicores = k8sNode.getStatus().getAllocatable().get("cpu").getNumericalAmount().doubleValue() * 1000.0;
+                    allocatableMillicores = k8sNode.getStatus().getAllocatable().get("cpu").getNumericalAmount()
+                            .doubleValue() * 1000.0;
                 }
 
                 double cpuPercent = (usageMillicores / allocatableMillicores) * 100.0;
@@ -175,5 +196,5 @@ public class KubernetesOrchestrationService {
         }
         return cpuMap;
     }
-    
+
 }

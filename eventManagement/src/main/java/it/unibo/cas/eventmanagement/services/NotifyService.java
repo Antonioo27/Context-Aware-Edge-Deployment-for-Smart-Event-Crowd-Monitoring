@@ -116,4 +116,8 @@ public class NotifyService {
         }
         return listDTO;
     }
+
+    public void deleteNotifications() {
+        notificationRepository.deleteAll();
+    }
 }
