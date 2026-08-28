@@ -17,6 +17,10 @@ public class AnalysisService {
     @Value("${eventanalysis.analysis.windows-size:60}")
     private int windowSize;
 
+    @Getter
+    @Value("${analysis.slide-step:5.0}")
+    private double slideStep;
+
     @Value("${eventanalysis.analysis.mean-exp-int:25}")
     private int mean;
 
@@ -102,17 +106,15 @@ public class AnalysisService {
      * @return the trend of the crowd density
      */
     public Trend calculateTrend(List<AnalysisStats> previousStats) {
-        if (previousStats== null || previousStats.size() < 3) {
+        if (previousStats == null || previousStats.size() < 3) {
             return Trend.NOT_ENOUGH_VALUES;
         }
 
-        int n = Math.min(previousStats.size(), 5);
+        int maxPoints = (int) Math.max(5, Math.round(windowSize / slideStep));
+        int n = Math.min(previousStats.size(), maxPoints);
         List<AnalysisStats> recent = previousStats.subList(previousStats.size() - n, previousStats.size());
 
-        // Perform linear regression on the last 5 values to find the slope
-        // Calculate the slope based on density to ensure it's area-independent
         double slope = getSlope(recent);
-
         return getTrend(slope);
     }
 

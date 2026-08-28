@@ -22,7 +22,10 @@ public record AnalysisProperties(
         @DefaultValue("500") int dedupWindow,
         @DefaultValue("1") int reconnectMinDelay,
         @DefaultValue("30") int reconnectMaxDelay,
-        @DefaultValue("INFO") String logLevel
+        @DefaultValue("INFO") String logLevel,
+        @DefaultValue("60.0") double windowSize, // W: ampiezza temporale della finestra in secondi
+        @DefaultValue("5.0") double slideStep    // S: frequenza del ciclo di calcolo in secondi
+
 ) {
     public AnalysisProperties {
         if (areaId == null || areaId.isBlank()) {
@@ -51,6 +54,16 @@ public record AnalysisProperties(
         }
         if (dedupWindow < 1) {
             throw new IllegalArgumentException("dedupWindow must be >= 1");
+        }
+        // --- Validazione Parametri Sliding Window ---
+        if (windowSize <= 0) {
+            throw new IllegalArgumentException("windowSize must be > 0");
+        }
+        if (slideStep <= 0) {
+            throw new IllegalArgumentException("slideStep must be > 0");
+        }
+        if (slideStep > windowSize) {
+            throw new IllegalArgumentException("slideStep cannot be larger than windowSize");
         }
     }
 

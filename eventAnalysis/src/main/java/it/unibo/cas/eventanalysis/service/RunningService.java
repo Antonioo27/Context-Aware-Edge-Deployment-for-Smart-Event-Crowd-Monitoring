@@ -79,9 +79,11 @@ public class RunningService {
             log.warn("[AREA {}] Broker unreachable during startup: will keep trying in background", area.id());
         }
 
-        double windowSeconds = analysisService.getWindowSize();
-        long windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
-        long nextStats = System.nanoTime() + windowNanos;
+        double windowSeconds = analysisService.getWindowSize(); // W = 60s
+        double stepSeconds = analysisService.getSlideStep();    // S = 5s
+
+        long stepNanos = (long) (stepSeconds * 1_000_000_000L);
+        long nextStats = System.nanoTime() + stepNanos;
 
         while(running && !Thread.currentThread().isInterrupted()) {
             ProbeBatch batch = subscriber.get(1, TimeUnit.SECONDS);
@@ -123,12 +125,13 @@ public class RunningService {
 
             long currentNanos = System.nanoTime();
             if (currentNanos >= nextStats) {
+                nextStats = currentNanos + stepNanos;
+
                 log.info("[AREA {}] Window timer expired. Total accumulated batches in window: {}", area.id(), probeBatches.size());
                 log.info("[AREA {}] Transport stats: {}", area.id(), subscriber.getStatsSnapshot());
-                windowNanos = (long) (analysisService.getWindowSize() * 1_000_000_000L);
-                nextStats = currentNanos + windowNanos;
+                
 
-                purgeExpiredBatches(analysisService.getWindowSize());
+                purgeExpiredBatches(windowSeconds);
 
                 if (!probeBatches.isEmpty()) {
                     AnalysisStats analysisStats = doAnalysis();
@@ -158,8 +161,6 @@ public class RunningService {
                         log.error("[AREA {}] Failed to send analysis stats to EventManagement backend: {}", area.id(), e.getMessage());
                     }
 
-                    // Pulisce la finestra scorrevole per il ciclo successivo
-                    probeBatches.clear();
                 }
             }
         }
