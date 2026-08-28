@@ -4,10 +4,10 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  // Carica le variabili d'ambiente dalla root del progetto (.. rispetto a event-frontend)
+  // Carica le variabili d'ambiente dalla root del progetto
   const env = loadEnv(mode, path.resolve(__dirname, '..'), '');
   
-  // Usa la variabile VITE_PROXY_TARGET se definita, altrimenti il default per il collega
+  // Usa la variabile VITE_PROXY_TARGET se definita, altrimenti il default
   const target = env.VITE_PROXY_TARGET || 'http://192.168.58.2:30080';
 
   return {

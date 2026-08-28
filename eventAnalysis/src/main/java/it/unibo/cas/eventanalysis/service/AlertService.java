@@ -36,13 +36,13 @@ public class AlertService {
      */
     public Alert checkAlerts(AnalysisHistory analysisHistory) {
         List<AnalysisStats> stats = analysisHistory.getAnalysisStats();
-        if(stats == null || stats.isEmpty()) 
+        if (stats == null || stats.isEmpty())
             return null;
 
         int dangerScore = 0;
         // Analizziamo al massimo le ultime 3 finestre temporali
-        int recentWindows = Math.min(stats.size(), 3); 
-        
+        int recentWindows = Math.min(stats.size(), 3);
+
         for (int i = stats.size() - 1; i >= stats.size() - recentWindows; i--) {
             AnalysisStats stat = stats.get(i);
             if (stat.getTrend() == Trend.HIGHLY_RISING) {
@@ -56,15 +56,15 @@ public class AlertService {
             }
         }
 
-        // Scatta l'alert in modo più facile: basta 1 HIGHLY_RISING o 2 RISING recenti
-        if (dangerScore >= 2) {
+        if (dangerScore >= 5) {
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())
-                    .cause("Il trend della folla in quest'area è in forte crescita (Danger Score: " + dangerScore + "/3)")
+                    .cause("Il trend della folla in quest'area è in forte crescita (Danger Score: " + dangerScore
+                            + "/3)")
                     .build();
         }
-        
+
         return null;
     }
 
