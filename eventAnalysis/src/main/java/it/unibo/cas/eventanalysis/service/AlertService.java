@@ -1,17 +1,21 @@
 package it.unibo.cas.eventanalysis.service;
 
 import it.unibo.cas.eventanalysis.clients.EventManagementClient;
+import it.unibo.cas.eventanalysis.clients.MqttBrokerClient;
 import it.unibo.cas.eventanalysis.models.entities.Alert;
 import it.unibo.cas.eventanalysis.models.entities.AnalysisHistory;
 import it.unibo.cas.eventanalysis.models.entities.AnalysisStats;
 import it.unibo.cas.eventanalysis.models.entities.Area;
 import it.unibo.cas.eventanalysis.models.enums.Trend;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.List;
 
+@Slf4j
 @Service
 public class AlertService {
     @Autowired
@@ -19,6 +23,9 @@ public class AlertService {
 
     @Autowired
     private EventManagementClient eventManagementClient;
+
+    @Autowired
+    private MqttBrokerClient mqttBrokerClient;
 
     /**
      * Check if there are too many highly rising trends in the analysis history.
@@ -62,12 +69,22 @@ public class AlertService {
     }
 
     /**
-     * Send an alert to the event management service.
+     * Send an alert to the event management service and to the broker.
      * 
      * @param alert the alert to send
      */
-    public void sendAlert(Alert alert) {
-        eventManagementClient.sendAlert(alert);
+    public void emitDualPathAlert(Alert alert) {
+        // 1. FAST-PATH: Invio immediato su MQTT locale (~1-2 ms)
+        String topic = "event/alerts/" + alert.getArea_id();
+        mqttBrokerClient.publishAlert(topic, alert);
+
+        // 2. SLOW-PATH: Salvataggio asincrono su Backend PostGIS (~40 ms)
+        try {
+            eventManagementClient.sendAlert(alert);
+            log.info("[SLOW-PATH] Alert inviato al Backend per persistenza su DB");
+        } catch (Exception e) {
+            log.error("Errore salvataggio alert su Backend: {}", e.getMessage());
+        }
     }
 
 }

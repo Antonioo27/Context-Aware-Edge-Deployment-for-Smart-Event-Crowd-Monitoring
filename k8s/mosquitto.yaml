@@ -1,5 +1,5 @@
 # -------------------------------------------------------------
-# ConfigMap condivisa per consentire connessioni anonime (Mosquitto v2.x)
+# ConfigMap condivisa per consentire connessioni anonime e WebSockets (Mosquitto v2.x)
 # -------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
@@ -8,7 +8,14 @@ metadata:
   namespace: default
 data:
   mosquitto.conf: |
-    listener 1883
+    # Listener TCP standard (Simulator e Pod Java)
+    listener 1883 0.0.0.0
+    protocol mqtt
+    allow_anonymous true
+
+    # Listener WebSockets (Frontend React Browser)
+    listener 9001 0.0.0.0
+    protocol websockets
     allow_anonymous true
 ---
 # =============================================================
@@ -39,6 +46,9 @@ spec:
         ports:
         - containerPort: 1883
           hostPort: 1883
+          protocol: TCP
+        - containerPort: 9001
+          hostPort: 9001
           protocol: TCP
         volumeMounts:
         - name: config
@@ -92,6 +102,9 @@ spec:
         - containerPort: 1883
           hostPort: 1883
           protocol: TCP
+        - containerPort: 9001
+          hostPort: 9001
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /mosquitto/config/mosquitto.conf
@@ -144,6 +157,9 @@ spec:
         - containerPort: 1883
           hostPort: 1883
           protocol: TCP
+        - containerPort: 9001
+          hostPort: 9001
+          protocol: TCP
         volumeMounts:
         - name: config
           mountPath: /mosquitto/config/mosquitto.conf
@@ -195,6 +211,9 @@ spec:
         ports:
         - containerPort: 1883
           hostPort: 1883
+          protocol: TCP
+        - containerPort: 9001
+          hostPort: 9001
           protocol: TCP
         volumeMounts:
         - name: config

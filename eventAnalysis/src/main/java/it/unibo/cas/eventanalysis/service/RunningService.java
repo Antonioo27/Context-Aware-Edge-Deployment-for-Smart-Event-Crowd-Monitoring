@@ -135,7 +135,7 @@ public class RunningService {
 
                     Alert alert = alertService.checkAlerts(analysisHistory);
                     if (alert != null) {
-                        alertService.sendAlert(alert);
+                        alertService.emitDualPathAlert(alert);
                     }
                     
                     AnalysisStatsDTO analysisStatsDTO = AnalysisStatsDTO.builder()

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AlertsSidebar from '../alerts/AlertsSidebar';
 import AnalysisSidebar from '../analysis/AnalysisSidebar';
 import MonitoringMap from '../map/MonitoringMap';
@@ -9,6 +9,7 @@ import { useDashboardData } from '../../../hooks/useDashboardData';
 import { useMapInteractions } from '../../../hooks/useMapInteractions';
 import { nodeApi } from '../../../api/nodeApi';
 import { Card, CardHeader, CardBody } from '../../ui/Card';
+import { useMqttAlerts } from '../../../hooks/useMqttAlerts';
 
 const Dashboard: React.FC = () => {
   const { areas, nodes, refreshData } = useDashboardData();
@@ -47,6 +48,16 @@ const Dashboard: React.FC = () => {
       setSyncing(false);
     }
   };
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then((permission) => {
+        console.log(`Permesso notifiche browser: ${permission}`);
+      });
+    }
+  }, []);
+
+  useMqttAlerts(nodes);
 
   return (
     <div className="container-fluid mt-2" data-testid="dashboard-container">

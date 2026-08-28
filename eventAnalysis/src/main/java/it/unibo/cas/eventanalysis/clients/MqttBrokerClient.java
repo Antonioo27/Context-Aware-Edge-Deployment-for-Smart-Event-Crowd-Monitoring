@@ -9,6 +9,10 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -23,6 +27,10 @@ public class MqttBrokerClient implements MqttCallbackExtended {
     private final MqttAsyncClient client;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean stopping = new AtomicBoolean(false);
+    // Inizializzazione ObjectMapper con supporto a OffsetDateTime (ISO-8601)
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     @Setter
     private MqttConnectionListener connectionListener;
@@ -109,6 +117,23 @@ public class MqttBrokerClient implements MqttCallbackExtended {
 
     public void publish(String topic, byte[] payload, int qos, boolean retained) throws MqttException {
         client.publish(topic, payload, qos, retained, null, null);
+    }
+    
+    public void publishAlert(String topic, Object payload) {
+        try {
+            if (isConnected()) {
+                String json = objectMapper.writeValueAsString(payload);
+                byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+                
+                // Sfrutta il metodo publish già esistente
+                this.publish(topic, bytes, 1, false);
+                log.info("[FAST-PATH] Alert pubblicato su MQTT topic: {}", topic);
+            } else {
+                log.warn("Impossibile inviare alert Fast-Path: client MQTT non connesso");
+            }
+        } catch (Exception e) {
+            log.error("Errore durante la pubblicazione MQTT dell'alert: {}", e.getMessage());
+        }
     }
 
     public void ack(int mid, int qos) {
