@@ -81,18 +81,12 @@ public class MetricsService {
         double avgSlow = count > 0 ? Math.round((sumSlow / count) * 10.0) / 10.0 : 0.0;
         double avgFast = count > 0 ? Math.round((sumFast / count) * 10.0) / 10.0 : 0.0;
 
-        // Aggiornamento Medie Mobili (EMA)
-        currentEmaSlowPath = (currentEmaSlowPath == null) ? avgSlow : (latencyConfig.getEmaAlpha() * avgSlow) + ((1.0 - latencyConfig.getEmaAlpha()) * currentEmaSlowPath);
-        currentEmaFastPath = (currentEmaFastPath == null) ? avgFast : (latencyConfig.getEmaAlpha() * avgFast) + ((1.0 - latencyConfig.getEmaAlpha()) * currentEmaFastPath);
-
         long totalReqs = Math.max(totalRequestsCounter.get(), analysisStatsRepository.count());
 
         return new SystemMetricsDTO(
                 totalReqs,
                 avgSlow,
-                Math.round(currentEmaSlowPath * 10.0) / 10.0,
                 avgFast,
-                Math.round(currentEmaFastPath * 10.0) / 10.0,
                 alertRepository.count(),
                 areaSlowLatencies,
                 areaFastLatencies,
