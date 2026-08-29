@@ -19,4 +19,28 @@ export const nodeApi = {
     fetchClient<Record<string, string[]>>('/api/nodes/allocations', { method: 'GET' }),
   getNodeCpuMetrics: () =>
     fetchClient<Record<string, number>>('/api/nodes/nodeUsage', { method: 'GET' }),
+  
+  startCpuStress: (nodeId: string, duration: number = 180) =>
+    fetchClient<{ nodeId: string; stressActive: boolean; message: string }>(
+      `/api/nodes/${nodeId}/stress?duration=${duration}`,
+      { method: 'POST' }
+    ),
+
+  stopCpuStress: (nodeId: string) =>
+    fetchClient<{ nodeId: string; stressActive: boolean; message: string }>(
+      `/api/nodes/${nodeId}/stress`,
+      { method: 'DELETE' }
+    ),
+  toggleCordonNode: (nodeId: string, cordon: boolean) =>
+    fetchClient<{ nodeId: string; cordoned: boolean; success: boolean; message: string }>(
+      `/api/nodes/${nodeId}/cordon?cordon=${cordon}`,
+      { method: 'POST' }
+    ),
+
+  getSimulationStatus: () =>
+    fetchClient<{ stressedNodes: string[]; cordonedNodes: string[] }>(
+      '/api/nodes/simulation-status',
+      { method: 'GET' }
+    ),
+  
 };

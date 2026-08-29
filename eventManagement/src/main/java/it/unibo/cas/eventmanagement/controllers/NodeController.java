@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import it.unibo.cas.eventmanagement.services.NodeService;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDTO;
 import it.unibo.cas.eventmanagement.models.entities.Node;
+import it.unibo.cas.eventmanagement.orchestration.KubernetesOrchestrationService;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDistanceDTO;
 
 @RestController
@@ -17,6 +18,8 @@ import it.unibo.cas.eventmanagement.models.DTOs.NodeDistanceDTO;
 public class NodeController {
     
     @Autowired private NodeService nodeService;
+
+    @Autowired private KubernetesOrchestrationService orchestrationService;
 
 
     @PostMapping("/sync-k8s")
@@ -84,5 +87,53 @@ public class NodeController {
         return ResponseEntity.ok(updated);
     }
 
+    @PostMapping("/{nodeId}/stress")
+    public ResponseEntity<Map<String, Object>> triggerCpuStress(
+            @PathVariable String nodeId,
+            @RequestParam(defaultValue = "180") int duration) {
+        
+        boolean started = orchestrationService.startNodeCpuStress(nodeId, duration);
+        return ResponseEntity.ok(Map.of(
+                "nodeId", nodeId,
+                "stressActive", started,
+                "durationSeconds", duration,
+                "message", started ? "Stress test CPU avviato per " + duration + "s" : "Impossibile avviare lo stress test"
+        ));
+    }
+
+    @DeleteMapping("/{nodeId}/stress")
+    public ResponseEntity<Map<String, Object>> stopCpuStress(@PathVariable String nodeId) {
+        boolean stopped = orchestrationService.stopNodeCpuStress(nodeId);
+        return ResponseEntity.ok(Map.of(
+                "nodeId", nodeId,
+                "stressActive", false,
+                "message", stopped ? "Stress test interrotto" : "Nessun pod di stress attivo trovato"
+        ));
+    }
+
+    @PostMapping("/{nodeId}/cordon")
+    public ResponseEntity<Map<String, Object>> toggleCordon(
+            @PathVariable String nodeId,
+            @RequestParam boolean cordon) {
+        
+        boolean success = orchestrationService.setNodeCordon(nodeId, cordon);
+        return ResponseEntity.ok(Map.of(
+                "nodeId", nodeId,
+                "cordoned", cordon,
+                "success", success,
+                "message", cordon ? "Nodo spento/cordonato con successo" : "Nodo ripristinato/uncordon con successo"
+        ));
+    }
+
+    @GetMapping("/simulation-status")
+    public ResponseEntity<Map<String, List<String>>> getSimulationStatus() {
+        List<String> stressedNodes = orchestrationService.getStressedNodeIds();
+        List<String> cordonedNodes = orchestrationService.getCordonedNodeIds();
+        
+        return ResponseEntity.ok(Map.of(
+                "stressedNodes", stressedNodes,
+                "cordonedNodes", cordonedNodes
+        ));
+    }
 
 }

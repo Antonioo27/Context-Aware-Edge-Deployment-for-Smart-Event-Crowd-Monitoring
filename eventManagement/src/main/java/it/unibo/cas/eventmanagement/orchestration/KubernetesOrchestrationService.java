@@ -13,10 +13,14 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodBuilder;
 
 @Service
 public class KubernetesOrchestrationService {
@@ -142,7 +146,7 @@ public class KubernetesOrchestrationService {
         String namespace = client.getNamespace();
 
         try {
-            // Patch JSON mirata: modifica esclusivamente il node-id nel nodeSelector
+            // Patch JSON: modify only the node-id in the nodeSelector
             String patchJson = String.format(
                     "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"node-id\":\"%s\"}}}}}",
                     targetNodeId);
@@ -163,7 +167,7 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Restituisce una mappa nodeId -> percentuale Utilizzo CPU
+     * Return a nodeId -> usagePercentageCPU map
      */
     public Map<String, Double> getNodeCpuUsagePercentageMap() {
         Map<String, Double> cpuMap = new HashMap<>();
@@ -198,7 +202,7 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Recupera la mappa completa { areaName -> currentNodeId } interrogando tutti i Deployment di analisi attivi
+     * Return the { areaName -> currentNodeId } map 
      */
     public Map<String, String> getCurrentAssignments() {
         Map<String, String> assignments = new HashMap<>();
@@ -231,7 +235,7 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Conta quanti Pod di analisi sono attualmente allocati su ciascun nodo
+     * How many analysis pods has every node
      */
     public Map<String, Integer> getNodePodCountMap() {
         Map<String, Integer> podCountMap = new HashMap<>();
@@ -246,6 +250,147 @@ public class KubernetesOrchestrationService {
         }
 
         return podCountMap;
+    }
+
+    /**
+     * Start a stress-ng Pod on the targetNode by the nodeSelector.
+     */
+    public boolean startNodeCpuStress(String nodeId, int durationSeconds) {
+        String podName = "cpu-stress-" + nodeId;
+        String namespace = "default";
+
+        try {
+            // Elimina eventuale pod precedente con lo stesso nome
+            client.pods().inNamespace(namespace).withName(podName).delete();
+
+            Pod stressPod = new PodBuilder()
+                    .withNewMetadata()
+                        .withName(podName)
+                        .withNamespace(namespace)
+                        .addToLabels("app", "cpu-stress")
+                        .addToLabels("node-id", nodeId)
+                    .endMetadata()
+                    .withNewSpec()
+                        .withRestartPolicy("Never")
+                        .addToNodeSelector("node-id", nodeId)
+                        .addNewContainer()
+                            .withName("stressor")
+                            .withImage("polinux/stress-ng")
+                            .withArgs("--cpu", "0", "--cpu-load", "95", "--timeout", durationSeconds + "s")
+                        .endContainer()
+                    .endSpec()
+                    .build();
+
+            client.pods().inNamespace(namespace).resource(stressPod).create();
+            logger.info("[STRESS-NG] Pod {} avviato con successo su nodo '{}' (durata: {}s)", podName, nodeId, durationSeconds);
+            return true;
+        } catch (Exception e) {
+            logger.error("Errore durante l'avvio del Pod di stress sul nodo {}: {}", nodeId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Interrupt the stress pod
+     */
+    public boolean stopNodeCpuStress(String nodeId) {
+        String podName = "cpu-stress-" + nodeId;
+        try {
+            var deleted = client.pods().inNamespace("default").withName(podName).delete();
+            logger.info("[STRESS-NG] Pod {} terminato manualmente", podName);
+            return deleted != null && !deleted.isEmpty();
+        } catch (Exception e) {
+            logger.error("Errore durante l'eliminazione del Pod di stress per nodo {}: {}", nodeId, e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean isNodeUnderStress(String nodeId) {
+        String podName = "cpu-stress-" + nodeId;
+        Pod pod = client.pods().inNamespace("default").withName(podName).get();
+        return pod != null && "Running".equalsIgnoreCase(pod.getStatus().getPhase());
+    }
+
+    /**
+     * Set the state of cordon or uncordon of a node 
+     */
+    public boolean setNodeCordon(String nodeId, boolean cordoned) {
+        try {
+            List<Node> k8sNodes = client.nodes().list().getItems();
+            for (Node node : k8sNodes) {
+                String labelNodeId = (node.getMetadata() != null && node.getMetadata().getLabels() != null)
+                        ? node.getMetadata().getLabels().get("node-id")
+                        : null;
+                String k8sName = node.getMetadata() != null ? node.getMetadata().getName() : null;
+
+                if (nodeId.equals(labelNodeId) || nodeId.equals(k8sName)) {
+                    // Patch mirata sul solo campo unschedulable di spec
+                    String patchJson = String.format("{\"spec\":{\"unschedulable\":%b}}", cordoned);
+
+                    client.nodes()
+                            .withName(k8sName)
+                            .patch(patchJson);
+
+                    logger.info("🔌 [NODE CORDON] Nodo '{}' (K8s: '{}') impostato a unschedulable={}", nodeId, k8sName, cordoned);
+                    return true;
+                }
+            }
+            logger.warn("[NODE CORDON] Nodo '{}' non trovato nel cluster K8s", nodeId);
+            return false;
+        } catch (Exception e) {
+            logger.error("Errore durante cordon/uncordon del nodo {}: {}", nodeId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Return the list of id for every node who has a stress pod
+     * 
+     */
+    public List<String> getStressedNodeIds() {
+        List<String> stressed = new ArrayList<>();
+        try {
+            List<Pod> pods = client.pods().inNamespace("default").withLabel("app", "cpu-stress").list().getItems();
+            for (Pod p : pods) {
+                String phase = p.getStatus() != null ? p.getStatus().getPhase() : "";
+                if ("Running".equalsIgnoreCase(phase) || "Pending".equalsIgnoreCase(phase)) {
+                    String nodeId = p.getMetadata().getLabels() != null ? p.getMetadata().getLabels().get("node-id") : null;
+                    String nodeName = p.getSpec() != null ? p.getSpec().getNodeName() : null;
+                    if (nodeId != null) stressed.add(nodeId);
+                    if (nodeName != null && !stressed.contains(nodeName)) stressed.add(nodeName);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Errore nel recupero dei pod di stress attivi: {}", e.getMessage());
+        }
+        return stressed;
+    }
+
+
+    public List<String> getCordonedNodeIds() {
+        List<String> cordoned = new ArrayList<>();
+        try {
+            List<Node> k8sNodes = client.nodes().list().getItems();
+            for (Node n : k8sNodes) {
+                // Se il nodo non è mai stato cordonato, getUnschedulable() restituisce null
+                if (n.getSpec() != null && Boolean.TRUE.equals(n.getSpec().getUnschedulable())) {
+                    String labelNodeId = (n.getMetadata() != null && n.getMetadata().getLabels() != null)
+                            ? n.getMetadata().getLabels().get("node-id")
+                            : null;
+                    String k8sName = n.getMetadata() != null ? n.getMetadata().getName() : null;
+
+                    if (labelNodeId != null) {
+                        cordoned.add(labelNodeId);
+                    }
+                    if (k8sName != null && !cordoned.contains(k8sName)) {
+                        cordoned.add(k8sName);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Errore nel recupero dei nodi cordonati: {}", e.getMessage());
+        }
+        return cordoned;
     }
 
 }

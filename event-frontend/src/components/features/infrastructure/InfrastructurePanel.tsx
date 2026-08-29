@@ -14,53 +14,96 @@ interface NodeDistanceDTO {
 
 interface InfrastructurePanelProps {
   nodes: NodeDTO[];
-//  onRefreshNeeded?: () => void;
+  onRefreshNeeded?: () => void;
 }
 
-//const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefreshNeeded }) => {
-const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes }) => {
+const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefreshNeeded }) => {
   const [migrations, setMigrations] = useState<MigrationDTO[]>([]);
   const [allocations, setAllocations] = useState<Record<string, string[]>>({});
   const [cpuMetrics, setCpuMetrics] = useState<Record<string, number>>({});
   const [distances, setDistances] = useState<NodeDistanceDTO[]>([]);
-//  const [syncingK8s, setSyncingK8s] = useState<boolean>(false);
+  const [loadingNode, setLoadingNode] = useState<string | null>(null);
+  const [activeStressNodes, setActiveStressNodes] = useState<Set<string>>(new Set());
+  const [cordonedNodes, setCordonedNodes] = useState<Set<string>>(new Set());
 
   const fetchInfrastructureData = async () => {
     try {
-      const [migs, allocs, cpus, dists] = await Promise.all([
+      const [migs, allocs, cpus, dists, simStatus] = await Promise.all([
         migrationApi.getAllMigrations().catch(() => []),
         nodeApi.getNodeAllocations().catch(() => ({})),
         nodeApi.getNodeCpuMetrics().catch(() => ({})),
-        fetchClient<NodeDistanceDTO[]>('/api/nodes/distances', { method: 'GET' }).catch(() => [])
+        fetchClient<NodeDistanceDTO[]>('/api/nodes/distances', { method: 'GET' }).catch(() => []),
+        nodeApi.getSimulationStatus().catch(() => ({ stressedNodes: [], cordonedNodes: [] }))
       ]);
+      
       setMigrations(migs);
       setAllocations(allocs);
       setCpuMetrics(cpus);
       setDistances(dists);
+
+      // Sincronizza lo stato reale da Kubernetes (mantiene la memoria anche dopo F5)
+      if (simStatus) {
+        setActiveStressNodes(new Set(simStatus.stressedNodes));
+        setCordonedNodes(new Set(simStatus.cordonedNodes));
+      }
     } catch (e) {
       console.error('Errore nel recupero dati infrastruttura', e);
     }
   };
 
+  const handleToggleStress = async (nodeId: string) => {
+    setLoadingNode(nodeId);
+    try {
+      if (activeStressNodes.has(nodeId)) {
+        await nodeApi.stopCpuStress(nodeId);
+        setActiveStressNodes((prev) => {
+          const next = new Set(prev);
+          next.delete(nodeId);
+          return next;
+        });
+      } else {
+        await nodeApi.startCpuStress(nodeId, 180);
+        setActiveStressNodes((prev) => new Set(prev).add(nodeId));
+      }
+      if (onRefreshNeeded) onRefreshNeeded();
+      await fetchInfrastructureData();
+    } catch (err) {
+      console.error('Errore esecuzione stress test sul nodo', err);
+      alert(`Impossibile modificare lo stress test sul nodo ${nodeId}`);
+    } finally {
+      setLoadingNode(null);
+    }
+  };
+
+  // Gestione Spegnimento / Guasto Nodo (kubectl cordon / uncordon)
+  const handleToggleCordon = async (nodeId: string) => {
+    setLoadingNode(nodeId);
+    const isCurrentlyCordoned = cordonedNodes.has(nodeId);
+    try {
+      await nodeApi.toggleCordonNode(nodeId, !isCurrentlyCordoned);
+      setCordonedNodes((prev) => {
+        const next = new Set(prev);
+        if (isCurrentlyCordoned) {
+          next.delete(nodeId);
+        } else {
+          next.add(nodeId);
+        }
+        return next;
+      });
+      if (onRefreshNeeded) onRefreshNeeded();
+      await fetchInfrastructureData();
+    } catch (err) {
+      console.error('Errore durante cordon/uncordon del nodo', err);
+      alert(`Impossibile modificare lo stato operativo del nodo ${nodeId}`);
+    } finally {
+      setLoadingNode(null);
+    }
+  };
   useEffect(() => {
     fetchInfrastructureData();
     const interval = setInterval(fetchInfrastructureData, 4000);
     return () => clearInterval(interval);
   }, []);
-
-//  const handleSyncK8s = async () => {
-//    setSyncingK8s(true);
-//    try {
-//      await nodeApi.syncK8sNodes();
-//      if (onRefreshNeeded) onRefreshNeeded();
-//      await fetchInfrastructureData();
-//    } catch (e) {
-//      console.error('Errore sync K8s', e);
-//      alert('Errore durante la sincronizzazione con Kubernetes');
-//    } finally {
-//      setSyncingK8s(false);
-//    }
-//  };
 
   const handleClearMigrations = async () => {
     if (confirm('Vuoi davvero cancellare lo storico delle migrazioni?')) {
@@ -70,7 +113,6 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes }) => {
   };
 
   // Helper per estrarre il nome pulito dell'Area dal nome del Pod di K8s
-  // Es: "event-analysis-stage-699ffbb9f6-tpg8d" -> "stage"
   const extractAreaName = (podName: string): string => {
     return podName
       .replace(/^event-analysis-/, '')
@@ -102,7 +144,7 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes }) => {
 
   return (
     <div className="row g-3">
-      {/* Colonna Sinistra: Nodi, Pod Allocati e CPU Load */}
+      {/* Colonna Sinistra: Nodi, Pod Allocati, CPU Load e Simulazione Sovraccarico */}
       <div className="col-md-5">
         <Card className="h-100">
           <CardHeader className="bg-secondary text-white d-flex justify-content-between align-items-center">
@@ -112,14 +154,22 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes }) => {
             <div className="row g-2">
               {nodes.map(node => {
                 const isEdge = node.type === 'EDGE';
-                const hostedPods = allocations[node.id || ''] || [];
-                const cpuPercent = cpuMetrics[node.id || ''] ?? 0;
+                const nodeId = node.id || node.name;
+                const hostedPods = allocations[nodeId] || [];
+                const cpuPercent = cpuMetrics[nodeId] ?? 0;
+                const isStressed = activeStressNodes.has(nodeId);
+                const isCordoned = cordonedNodes.has(nodeId);
 
                 return (
-                  <div key={node.id || node.name} className="col-12">
-                    <div className={`p-2 border rounded ${isEdge ? 'border-primary-subtle bg-light' : 'border-info-subtle bg-white'}`}>
+                  <div key={nodeId} className="col-12">
+                    <div className={`p-2 border rounded ${
+                      isStressed 
+                        ? 'border-danger bg-danger-subtle' 
+                        : isEdge 
+                          ? 'border-primary-subtle bg-light' 
+                          : 'border-info-subtle bg-white'
+                    }`}>
                       <div className="d-flex justify-content-between align-items-center mb-1">
-                        {/* Intestazione Nodo Pulita (Senza ID duplicato) */}
                         <div className="d-flex align-items-center gap-2">
                           <strong className="text-dark">{node.name}</strong>
                           <span className={`badge ${isEdge ? 'bg-primary' : 'bg-dark'}`}>{node.type}</span>
@@ -155,12 +205,12 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes }) => {
                         ) : (
                           hostedPods.map(podName => {
                             const displayAreaName = extractAreaName(podName);
-                            const latencyStr = getPodLatency(podName, node.id || '');
+                            const latencyStr = getPodLatency(podName, nodeId);
                             return (
                               <span 
                                 key={podName} 
                                 className="badge bg-white text-dark border d-inline-flex align-items-center gap-1 py-1 px-2 shadow-sm"
-                                title={`Latenza stimata PostGIS (${displayAreaName} -> ${node.id}): ${latencyStr}`}
+                                title={`Latenza stimata PostGIS (${displayAreaName} -> ${nodeId}): ${latencyStr}`}
                               >
                                 <span className="text-primary fw-bold">{displayAreaName}</span>
                                 <span className="badge bg-info-subtle text-info-emphasis rounded-pill" style={{ fontSize: '0.75rem' }}>
@@ -171,6 +221,49 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes }) => {
                           })
                         )}
                       </div>
+
+                      {/* Bottoni di Simulazione (Solo per Nodi Edge) */}
+                        {isEdge && (
+                          <div className="d-flex gap-2 mt-2">
+                            {/* 1. Pulsante Sovraccarico CPU */}
+                            <button
+                              className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1 ${
+                                isStressed ? 'btn-danger text-white' : 'btn-outline-danger'
+                              }`}
+                              onClick={() => handleToggleStress(nodeId)}
+                              disabled={loadingNode === nodeId || isCordoned}
+                              style={{ fontSize: '0.75rem' }}
+                              title="Lancia pod stress-ng per saturare la CPU"
+                            >
+                              {loadingNode === nodeId && isStressed ? (
+                                '...'
+                              ) : isStressed ? (
+                                'Ferma Stress'
+                              ) : (
+                                'Sovraccarico (95%)'
+                              )}
+                            </button>
+
+                            {/* 2. Pulsante Spegni / Cordon Nodo */}
+                            <button
+                              className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1 ${
+                                isCordoned ? 'btn-success text-white' : 'btn-outline-dark'
+                              }`}
+                              onClick={() => handleToggleCordon(nodeId)}
+                              disabled={loadingNode === nodeId}
+                              style={{ fontSize: '0.75rem' }}
+                              title="Imposta il nodo su Cordon / Uncordon in Kubernetes"
+                            >
+                              {loadingNode === nodeId && !isStressed ? (
+                                '...'
+                              ) : isCordoned ? (
+                                'Riattiva Nodo'
+                              ) : (
+                                'Spegni Nodo'
+                              )}
+                            </button>
+                          </div>
+                        )}
                     </div>
                   </div>
                 );
