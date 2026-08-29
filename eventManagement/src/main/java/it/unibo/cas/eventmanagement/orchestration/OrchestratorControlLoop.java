@@ -84,7 +84,20 @@ public class OrchestratorControlLoop {
             String currentNode = kubernetesOrchestrationService.getCurrentNodeForArea(area.getName());
             if (!"node-cloud".equals(currentNode)) {
                 logger.info(" [CLOUD-ONLY] Spostamento area '{}' da {} -> node-cloud", area.getName(), currentNode);
-                kubernetesOrchestrationService.migratePodToNode(area.getName(), "node-cloud");
+                boolean success = kubernetesOrchestrationService.migratePodToNode(area.getName(), "node-cloud");
+
+                String sanitizedAreaId = area.getName().toLowerCase().replaceAll("[^a-z0-9-]", "-");
+                migrationService.recordMigration(
+                    area.getName(),
+                    "event-analysis-" + sanitizedAreaId,
+                    currentNode != null ? currentNode : "unknown",
+                    "node-cloud",
+                    null,
+                    null,
+                    "Migrating to cloud",
+                    success,
+                    success ? null : "K8s patch failed"
+                );
             }
         }
     }

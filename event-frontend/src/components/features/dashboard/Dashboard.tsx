@@ -10,6 +10,7 @@ import { useMapInteractions } from '../../../hooks/useMapInteractions';
 import { nodeApi } from '../../../api/nodeApi';
 import { Card, CardHeader, CardBody } from '../../ui/Card';
 import { useMqttAlerts } from '../../../hooks/useMqttAlerts';
+import MetricsSummary from '../metrics/MetricsSummary';
 
 const Dashboard: React.FC = () => {
   const { areas, nodes, refreshData } = useDashboardData();
@@ -61,6 +62,10 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="container-fluid mt-2" data-testid="dashboard-container">
+      
+      {/* 1. Barra Metriche di Base (Requisito 5 della Traccia) */}
+      <MetricsSummary />
+    
       {/* 3 Colonne: Alert | Mappa | Analisi */}
       <div className="row g-3">
         <div className="col-md-3">

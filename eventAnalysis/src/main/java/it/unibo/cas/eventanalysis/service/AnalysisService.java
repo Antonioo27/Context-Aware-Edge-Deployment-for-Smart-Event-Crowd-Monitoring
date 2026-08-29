@@ -8,8 +8,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class AnalysisService {
@@ -58,26 +61,62 @@ public class AnalysisService {
     }
 
     /**
-     * Estimate the number of people in the given probe batches.
+     * estimate the number of person computing the effective temporal window (W_eff)
+     * cover by the batches actually in memory avoid holes in the warm-up.
      * 
-     * @param probeBatches the probe batches to estimate the number of people
-     * @return the estimated number of people
-     */
+     * @param probeBatches
+     * 
+     * @return the estimated people
+    */
     public long estimatePeople(List<ProbeBatch> probeBatches) {
-        return estimatePeople(countNumDifferentMac(probeBatches));
+        if (probeBatches == null || probeBatches.isEmpty()) {
+            return 0;
+        }
+
+        int distinctMac = countNumDifferentMac(probeBatches);
+
+        // Calcolo dell'intervallo temporale reale coperto dai batch presenti
+        OffsetDateTime minTs = probeBatches.stream()
+                .map(ProbeBatch::getSentAt)
+                .filter(Objects::nonNull)
+                .min(OffsetDateTime::compareTo)
+                .orElse(null);
+
+        OffsetDateTime maxTs = probeBatches.stream()
+                .map(ProbeBatch::getSentAt)
+                .filter(Objects::nonNull)
+                .max(OffsetDateTime::compareTo)
+                .orElse(null);
+
+        double effectiveWindow;
+        if (minTs != null && maxTs != null) {
+            double spanSeconds = Math.abs(Duration.between(minTs, maxTs).toMillis() / 1000.0);
+            // Ampiezza effettiva = span tra primo e ultimo batch + step del singolo batch
+            effectiveWindow = Math.min(windowSize, Math.max(slideStep, spanSeconds + slideStep));
+        } else {
+            effectiveWindow = windowSize;
+        }
+
+        return estimatePeople(distinctMac, effectiveWindow);
     }
 
     /**
      * Estimate the number of people based on the number of different MAC addresses.
      * 
      * @param numDifferentMac the number of different MAC addresses
+     * @param effectiveWindow actually size of the window 
      * @return the estimated number of people
      */
-    public long estimatePeople(int numDifferentMac) {
-        return Math.round(
-                numDifferentMac / (1 - Math.exp(((double) -windowSize / mean))));
+    public long estimatePeople(int numDifferentMac, double effectiveWindow) {
+        if (effectiveWindow <= 0.0) {
+            effectiveWindow = windowSize;
+        }
+        double denominator = 1.0 - Math.exp(-effectiveWindow / mean);
+        if (denominator <= 0.0) {
+            return 0;
+        }
+        return Math.round(numDifferentMac / denominator);
     }
-
     /**
      * Calculate the density of the crowd.
      * 

@@ -197,4 +197,55 @@ public class KubernetesOrchestrationService {
         return cpuMap;
     }
 
+    /**
+     * Recupera la mappa completa { areaName -> currentNodeId } interrogando tutti i Deployment di analisi attivi
+     */
+    public Map<String, String> getCurrentAssignments() {
+        Map<String, String> assignments = new HashMap<>();
+        try {
+            var deployments = client.apps().deployments()
+                    .inNamespace(client.getNamespace())
+                    .list().getItems();
+
+            for (var deployment : deployments) {
+                String name = deployment.getMetadata().getName();
+                if (name.startsWith("event-analysis-")) {
+                    String areaName = name.substring("event-analysis-".length());
+                    String nodeId = "node-cloud";
+
+                    if (deployment.getSpec() != null
+                            && deployment.getSpec().getTemplate() != null
+                            && deployment.getSpec().getTemplate().getSpec() != null) {
+                        var nodeSelector = deployment.getSpec().getTemplate().getSpec().getNodeSelector();
+                        if (nodeSelector != null && nodeSelector.containsKey("node-id")) {
+                            nodeId = nodeSelector.get("node-id");
+                        }
+                    }
+                    assignments.put(areaName, nodeId);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn(" [METRICS] Errore nel recupero delle assegnazioni correnti: {}", e.getMessage());
+        }
+        return assignments;
+    }
+
+    /**
+     * Conta quanti Pod di analisi sono attualmente allocati su ciascun nodo
+     */
+    public Map<String, Integer> getNodePodCountMap() {
+        Map<String, Integer> podCountMap = new HashMap<>();
+        podCountMap.put("node-cloud", 0);
+        podCountMap.put("node-edge-1", 0);
+        podCountMap.put("node-edge-2", 0);
+        podCountMap.put("node-edge-3", 0);
+
+        Map<String, String> assignments = getCurrentAssignments();
+        for (String nodeId : assignments.values()) {
+            podCountMap.put(nodeId, podCountMap.getOrDefault(nodeId, 0) + 1);
+        }
+
+        return podCountMap;
+    }
+
 }

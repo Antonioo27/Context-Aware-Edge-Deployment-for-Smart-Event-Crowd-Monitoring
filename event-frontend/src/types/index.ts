@@ -85,6 +85,19 @@ export interface AlertDTO {
   alertType?: AlertType;
 }
 
+export interface SystemMetricsDTO {
+  totalRequestsProcessed: number;
+  instantAverageLatencyMs: number;
+  emaAverageLatencyMs: number;
+  instantFastPathLatencyMs: number;
+  emaFastPathLatencyMs: number;
+  totalAlertsCount: number;
+  areaLatencies: Record<string, number>;
+  areaFastPathLatencies: Record<string, number>;
+  nodeCpuLoad: Record<string, number>;
+  nodePodCount: Record<string, number>;
+}
+
 export interface NotifyDTO {
   message: string;
   alert: AlertDTO;

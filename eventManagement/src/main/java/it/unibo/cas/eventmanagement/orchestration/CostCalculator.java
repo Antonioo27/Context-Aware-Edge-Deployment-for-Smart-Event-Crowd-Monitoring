@@ -1,7 +1,9 @@
 package it.unibo.cas.eventmanagement.orchestration;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import it.unibo.cas.eventmanagement.config.LatencyProperties;
 import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.enums.Priority;
 import it.unibo.cas.eventmanagement.models.enums.State;
@@ -9,12 +11,10 @@ import it.unibo.cas.eventmanagement.models.enums.State;
 @Component
 public class CostCalculator {
 
+    @Autowired
+    private LatencyProperties latencyConfig;
+
     private static final double CLOUD_WAN_PENALTY = 80.0;
-
-    // Costanti per le latenze
-    private static final double L_EXIT_EDGE_MS = 40.0; // Da Edge a Cloud DB
-    private static final double L_EXIT_CLOUD_MS = 1.0;  // Co-locato sul Cloud
-
     /**
      * calcolo costo totale di un piazzamento Pod dell'area A sul nodo N-
      * Costo = L_ingresso(A,N) * W(Area) + L_uscita(A,N) + PenalitàCarico
@@ -25,7 +25,7 @@ public class CostCalculator {
         boolean isCloud = "node-cloud".equals(targetNodeId);
 
         // Calcolo latenza uscita
-        double lUscita = isCloud ? L_EXIT_CLOUD_MS : L_EXIT_EDGE_MS;
+        double lUscita = isCloud ? latencyConfig.getExitCloudMs() : latencyConfig.getExitEdgeMs();
 
         // Calcolo peso area W(A) = PriorityWeight * CriticalityFactor
         double priorityWeight = getPriorityWeight(area.getPriority());

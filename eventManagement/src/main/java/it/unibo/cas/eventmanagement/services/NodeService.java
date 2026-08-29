@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
+import it.unibo.cas.eventmanagement.config.LatencyProperties;
 import it.unibo.cas.eventmanagement.exception.ResourceNotFoundException;
 import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.entities.Node;
@@ -33,10 +34,8 @@ public class NodeService {
     
     private static final Logger logger = LoggerFactory.getLogger(NodeService.class);
 
-    private static final double BASE_EDGE_LATENCY_MS = 1.0;
-    private static final double CLOUD_INGRESS_LATENCY_MS = 40.0;
-    // Incremento di 3.0 ms ogni 100 metri di distanza
-    private static final double MS_PER_METER = 3.0 / 100.0;
+    @Autowired
+    private LatencyProperties latencyConfig;
 
     @Autowired
     private NodeRepository nodeRepository;
@@ -263,7 +262,7 @@ public class NodeService {
     public double getIngressLatency(Area area, String nodeId) {
         // 1. Caso Nodo Cloud -> Latenza WAN fissa di ingresso (40 ms)
         if ("node-cloud".equals(nodeId) || (nodeId != null && nodeId.toLowerCase().contains("cloud"))) {
-            return CLOUD_INGRESS_LATENCY_MS;
+            return latencyConfig.getCloudIngressMs();
         }
 
         try {
@@ -279,7 +278,7 @@ public class NodeService {
         }
 
         // 3. Fallback di sicurezza: se la query fallisce consideriamo latenza WAN
-        return CLOUD_INGRESS_LATENCY_MS;
+        return latencyConfig.getCloudIngressMs();
     }
 
     public Map<String, List<String>> getNodePodAllocations() {
@@ -340,10 +339,10 @@ public class NodeService {
     
     private double calculateIngressLatency(String nodeId, double distanceMeters) {
         if ("node-cloud".equals(nodeId)) {
-            return CLOUD_INGRESS_LATENCY_MS;
+            return latencyConfig.getCloudIngressMs();
         }
         // Base 1.0 ms + propagazione metrica
-        return BASE_EDGE_LATENCY_MS + (distanceMeters * MS_PER_METER);
+        return latencyConfig.getBaseEdgeMs() + (distanceMeters * latencyConfig.getMsPerMeter());
     }
 
 
