@@ -28,8 +28,8 @@ public class CostCalculator {
         double lUscita = isCloud ? latencyConfig.getExitCloudMs() : latencyConfig.getExitEdgeMs();
 
         // Calcolo peso area W(A) = PriorityWeight * CriticalityFactor
-        double priorityWeight = getPriorityWeight(area.getPriority());
-        double criticalityFactor = getCriticalityFactor(currentState);
+        double priorityWeight = Priority.getWeightOrDefault(area.getPriority());
+        double criticalityFactor = State.getCriticalityFactorOrDefault(currentState);
         double weight = priorityWeight * criticalityFactor;
 
         // Penalità carico, se nodo edge ospita già Pod
@@ -53,25 +53,4 @@ public class CostCalculator {
         return (lIngressoMs * weight) + lUscita + loadPenalty;
 
     }
-
-    private double getPriorityWeight(Priority priority) {
-        if (priority == null) return 1.0;
-        return switch (priority) {
-            case VERY_HIGH -> 4.0;
-            case HIGH -> 3.0;
-            case MEDIUM -> 2.0;
-            case LOW -> 1.0;
-            case VERY_LOW -> 0.5;
-        };
-    }
-
-    private double getCriticalityFactor(State state) {
-        if (state == null) return 1.0;
-        return switch (state) {
-            case CRITICAL -> 2.5;
-            case HIGH -> 1.5;
-            case MEDIUM, LOW, NONE -> 1.0;
-        };
-    }
-
 }

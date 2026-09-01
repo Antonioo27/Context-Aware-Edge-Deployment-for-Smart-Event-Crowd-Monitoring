@@ -196,8 +196,8 @@ public class OrchestratorControlLoop {
         // Ordinamento per priorità statica crescente e poi per criticità dinamica crescente:
         // le aree meno critiche vengono valutate per prime per essere evacuate per prime
         List<Area> sortedAreas = new ArrayList<>(areas);
-        sortedAreas.sort(Comparator.comparingInt(this::getPriorityRank)
-                                   .thenComparingInt(this::getStateRank));
+        sortedAreas.sort(Comparator.comparingInt((Area a) -> Priority.getRankOrDefault(a.getPriority()))
+                                   .thenComparingInt(a -> State.getRankOrDefault(a.getState())));
 
         // Lettura metriche CPU reali dei nodi
         Map<String, Double> nodeCpuMap = kubernetesOrchestrationService.getNodeCpuUsagePercentageMap();
@@ -323,28 +323,6 @@ public class OrchestratorControlLoop {
             }
         
         }
-    }
-
-    private int getPriorityRank(Area area) {
-        Priority p = area.getPriority() != null ? area.getPriority() : Priority.MEDIUM;
-        return switch (p) {
-            case VERY_LOW -> 1;
-            case LOW -> 2;
-            case MEDIUM -> 3;
-            case HIGH -> 4;
-            case VERY_HIGH -> 5;
-        };
-    }
-
-    private int getStateRank(Area area) {
-        State s = area.getState() != null ? area.getState() : State.NONE;
-        return switch (s) {
-            case NONE -> 1;
-            case LOW -> 2;
-            case MEDIUM -> 3;
-            case HIGH -> 4;
-            case CRITICAL -> 5;
-        };
     }
 
     /**

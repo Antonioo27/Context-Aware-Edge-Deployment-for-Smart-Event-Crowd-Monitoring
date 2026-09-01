@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -60,7 +59,6 @@ public class RunningService {
     private ProbeBatch lastProcessedBatch = null;
 
     private volatile boolean running = true;
-    private long lastAlertNanos = 0;
 
     @EventListener(ApplicationReadyEvent.class)
     public void startAnalysisLoop() {
@@ -131,7 +129,7 @@ public class RunningService {
                 log.info("[AREA {}] Transport stats: {}", area.id(), subscriber.getStatsSnapshot());
                 
 
-                purgeExpiredBatches(windowSeconds);
+                removeExpiredBatches(windowSeconds);
 
                 if (!probeBatches.isEmpty()) {
                     AnalysisStats analysisStats = doAnalysis();
@@ -169,9 +167,9 @@ public class RunningService {
     }
     
     /**
-     * Rimuove dalla memoria i batch il cui timestamp reale è più vecchio di windowSeconds rispetto ad ora.
+     * Remove from the memory batch wich real timestamp is older than the windowSeconds respect to now.
      */
-    private void purgeExpiredBatches(double windowSeconds) {
+    private void removeExpiredBatches(double windowSeconds) {
         OffsetDateTime cutoff = OffsetDateTime.now().minusSeconds((long) windowSeconds);
         int initialSize = probeBatches.size();
 

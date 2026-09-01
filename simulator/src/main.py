@@ -3,7 +3,6 @@ import os
 import signal
 
 from .config import SimConfig
-from .control import ControlServer
 from .engine import SimulationEngine
 
 logger = logging.getLogger("simulator")
@@ -16,18 +15,16 @@ def _env_bool(name: str, default: bool):
 
 def main():
     """
-    Carica la config dell'ambiente, avvia control server e fa girare loop
+    Carica la config dell'ambiente, fa girare loop
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     config = SimConfig.from_env()
     engine = SimulationEngine(config)
 
-    control: ControlServer | None = None
     if _env_bool("SIM_CONTROL_ENABLED", True):
         host = os.getenv("SIM_CONTROL_HOST", "0.0.0.0")
         port = int(os.getenv("SIM_CONTROL_PORT", "8081"))
-        control = ControlServer(engine, host=host, port=port)
 
     def _handle_signal(signum, frame):
         logger.info("segnale %s ricevuto: arresto in corso...", signum)
@@ -47,13 +44,8 @@ def main():
         config.mqtt_qos, config.mqtt_clean_session, config.mqtt_topic_prefix,
     )
     try:
-        if control is not None:
-            control.start()
-            logger.info("control server su %s:%d", control.host, control.port)
         engine.run()   # blocca fino a fine scenario o segnale
     finally:
-        if control is not None:
-            control.stop()
         _log_summary(engine)
 
 def _log_summary(engine: SimulationEngine) -> None:
