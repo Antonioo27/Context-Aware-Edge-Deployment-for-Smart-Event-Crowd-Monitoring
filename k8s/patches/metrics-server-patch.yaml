@@ -1,0 +1,13 @@
+spec:
+  template:
+    spec:
+      containers:
+      - name: metrics-server
+        args:
+        - --cert-dir=/tmp
+        - --secure-port=4443
+        - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+        - --kubelet-use-node-status-port
+        - --kubelet-request-timeout=5s
+        - --metric-resolution=10s
+        - --kubelet-insecure-tls

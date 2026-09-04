@@ -17,7 +17,7 @@ public class LatencyProperties {
     private double exitCloudMs = 1.0;
     private double cloudIngressMs = 40.0;
     private double baseEdgeMs = 1.0;
-    private double msPerMeter = 3.0 / 100.0; // 3ms ogni 100 metri
+    private double msPerMeter = 4.0 / 100.0; // 3ms ogni 100 metri
 
     // Tratte Fast-Path (Notifiche Alert)
     private double wsLocalMs = 1.5;
