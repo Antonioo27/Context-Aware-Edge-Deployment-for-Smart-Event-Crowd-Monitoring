@@ -14,8 +14,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
-
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Slf4j
@@ -47,6 +48,9 @@ public class AnalysisService {
 
     @Autowired
     private NotifyService notifyService;
+
+    // Traccia l'ultimo alert di predizione inviato per ogni area (per evitare spam)
+    private final Map<String, OffsetDateTime> lastPredictionAlerts = new ConcurrentHashMap<>();
 
     /**
      * Adds a new analysis to the repository.
@@ -94,21 +98,31 @@ public class AnalysisService {
             double predictedDensity = predictedPeople / maxCapacity;
 
             if (predictedDensity > criticalThreshold) {
-                log.warn("PREDICTION ALERT: Area {} will become CRITICAL in {} minutes!", latestStats.getAreaId(),
-                        predictionHorizonMinutes);
+                // Verifica il cooldown di 2 minuti per l'area
+                OffsetDateTime lastAlert = lastPredictionAlerts.get(latestStats.getAreaId());
+                if (lastAlert == null || OffsetDateTime.now().isAfter(lastAlert.plusMinutes(2))) {
+                    
+                    log.warn("PREDICTION ALERT: Area {} will become CRITICAL in {} minutes!", latestStats.getAreaId(),
+                            predictionHorizonMinutes);
 
-                AlertDTO alertDTO = AlertDTO.builder()
-                        .area_id(latestStats.getAreaId())
-                        .ts(OffsetDateTime.now())
-                        .alertType(AlertType.PREDICTION)
-                        .cause(String.format(
-                                "Predizione: l'area supererà la soglia critica tra %d minuti. (Stima: %d persone)",
-                                predictionHorizonMinutes, predictedPeople.intValue()))
-                        .build();
+                    AlertDTO alertDTO = AlertDTO.builder()
+                            .area_id(latestStats.getAreaId())
+                            .ts(OffsetDateTime.now())
+                            .alertType(AlertType.PREDICTION)
+                            .cause(String.format(
+                                    "Predizione: l'area supererà la soglia critica tra %d minuti. (Stima: %d persone)",
+                                    predictionHorizonMinutes, predictedPeople.intValue()))
+                            .build();
 
-                // Creiamo l'alert e lo notifichiamo
-                Alert alert = alertService.addAlert(alertDTO);
-                notifyService.notifyAutomaticAlert(alert);
+                    // Creiamo l'alert e lo notifichiamo
+                    Alert alert = alertService.addAlert(alertDTO);
+                    notifyService.notifyAutomaticAlert(alert);
+                    
+                    // Aggiorna il timestamp dell'ultimo alert
+                    lastPredictionAlerts.put(latestStats.getAreaId(), OffsetDateTime.now());
+                } else {
+                    log.debug("Prediction alert for area {} skipped (cooldown active)", latestStats.getAreaId());
+                }
             }
         }
     }

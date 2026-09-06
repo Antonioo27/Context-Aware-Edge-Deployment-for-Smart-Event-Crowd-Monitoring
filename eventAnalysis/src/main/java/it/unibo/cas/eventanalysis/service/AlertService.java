@@ -36,32 +36,18 @@ public class AlertService {
      */
     public Alert checkAlerts(AnalysisHistory analysisHistory) {
         List<AnalysisStats> stats = analysisHistory.getAnalysisStats();
-        if (stats == null || stats.isEmpty())
+        if (stats == null || stats.size() < 2)
             return null;
 
-        int dangerScore = 0;
-        // Analizziamo al massimo le ultime 3 finestre temporali
-        int recentWindows = Math.min(stats.size(), 3);
+        int size = stats.size();
+        AnalysisStats lastStat = stats.get(size - 1);
+        AnalysisStats prevStat = stats.get(size - 2);
 
-        for (int i = stats.size() - 1; i >= stats.size() - recentWindows; i--) {
-            AnalysisStats stat = stats.get(i);
-            if (stat.getTrend() == Trend.HIGHLY_RISING) {
-                dangerScore += 2;
-            } else if (stat.getTrend() == Trend.RISING) {
-                dangerScore += 1;
-            } else if (stat.getTrend() == Trend.DOWNING) {
-                dangerScore -= 1;
-            } else if (stat.getTrend() == Trend.HIGHLY_DOWNING) {
-                dangerScore -= 2;
-            }
-        }
-
-        if (dangerScore >= 5) {
+        if (lastStat.getTrend() == Trend.HIGHLY_RISING && prevStat.getTrend() == Trend.HIGHLY_RISING) {
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())
-                    .cause("Il trend della folla in quest'area è in forte crescita (Danger Score: " + dangerScore
-                            + "/3)")
+                    .cause("The trend of the crowd is highly rising in this area (2 consecutive highly rising)")
                     .build();
         }
 

@@ -4,7 +4,7 @@ echo -e "\033[1;31m========================================================\033[
 echo -e "\033[1;31m[STOP] Arresto di tutto il sistema in corso...\033[0m"
 echo -e "\033[1;31m========================================================\033[0m"
 
-echo "1/3: Uccisione di eventuali processi rimasti appesi (port-forward, simulatore)..."
+echo "1/4: Uccisione di eventuali processi rimasti appesi (port-forward, simulatore)..."
 # Killa tutti i port-forward di kubectl
 pkill -f "kubectl port-forward" || true
 # Killa la dashboard

@@ -50,3 +50,5 @@ k8s_commands.md
 
 # --- Node.js ---
 ./event-frontend/node_modules
+
+start_cluster_pf.sh
