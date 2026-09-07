@@ -28,26 +28,32 @@ public class AlertService {
     private MqttBrokerClient mqttBrokerClient;
 
     /**
-     * Check if there are too many highly rising trends in the analysis history.
+     * Check if there are 3 or more consecutive highly rising trends in the analysis
+     * history.
      * 
      * @param analysisHistory the analysis history
-     * @return an Alert if there are too many highly rising trends,
+     * @return an Alert if there are 3 or more consecutive highly rising trends,
      *         {@code null} otherwise
      */
     public Alert checkAlerts(AnalysisHistory analysisHistory) {
         List<AnalysisStats> stats = analysisHistory.getAnalysisStats();
-        if (stats == null || stats.size() < 2)
+        if (stats == null || stats.size() < 3)
             return null;
 
-        int size = stats.size();
-        AnalysisStats lastStat = stats.get(size - 1);
-        AnalysisStats prevStat = stats.get(size - 2);
-
-        if (lastStat.getTrend() == Trend.HIGHLY_RISING && prevStat.getTrend() == Trend.HIGHLY_RISING) {
+        int countHighlyRising = 0;
+        for (AnalysisStats analysis : stats.reversed()) {
+            if (analysis.getTrend() == Trend.HIGHLY_RISING) {
+                countHighlyRising++;
+            } else {
+                break;
+            }
+        }
+        if (countHighlyRising >= 3) {
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())
-                    .cause("The trend of the crowd is highly rising in this area (2 consecutive highly rising)")
+                    .cause("The trend of the crowd is highly rising in area \"" + area.id()
+                            + "\" (3+ consecutive highly rising)")
                     .build();
         }
 
