@@ -58,7 +58,7 @@ nohup kubectl port-forward svc/event-management-svc 8080:8080 > /dev/null 2>&1 &
 sleep 2
 
 echo "==============================================================="
-echo "✅ INFRASTRUTTURA PRONTA E ALLINEATA!"
+echo "INFRASTRUTTURA PRONTA E ALLINEATA!"
 echo "   - Nodi configurati: 1 Cloud + 3 Edge"
 echo "   - Risoluzione CPU K8s: 10s"
 echo "   - Backend attivo su: http://localhost:8080"

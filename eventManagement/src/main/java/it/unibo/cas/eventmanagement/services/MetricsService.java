@@ -3,6 +3,7 @@ package it.unibo.cas.eventmanagement.services;
 import it.unibo.cas.eventmanagement.config.LatencyProperties;
 import it.unibo.cas.eventmanagement.models.DTOs.SystemMetricsDTO;
 import it.unibo.cas.eventmanagement.models.entities.Area;
+import it.unibo.cas.eventmanagement.models.enums.AlertType;
 import it.unibo.cas.eventmanagement.orchestration.KubernetesOrchestrationService;
 import it.unibo.cas.eventmanagement.repositories.AlertRepository;
 import it.unibo.cas.eventmanagement.repositories.AnalysisStatsRepository;
@@ -83,11 +84,16 @@ public class MetricsService {
 
         long totalReqs = Math.max(totalRequestsCounter.get(), analysisStatsRepository.count());
 
+        // Conta unicamente gli alert MANUAL e AUTOMATIC
+        long operationalAlerts = alertRepository.countByAlertTypeIn(
+                List.of(AlertType.MANUAL, AlertType.AUTOMATIC)
+        );
+
         return new SystemMetricsDTO(
                 totalReqs,
                 avgSlow,
                 avgFast,
-                alertRepository.count(),
+                operationalAlerts,
                 areaSlowLatencies,
                 areaFastLatencies,
                 orchestrationService.getNodeCpuUsagePercentageMap(),
