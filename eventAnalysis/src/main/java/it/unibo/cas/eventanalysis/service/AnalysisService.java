@@ -75,7 +75,6 @@ public class AnalysisService {
 
         int distinctMac = countNumDifferentMac(probeBatches);
 
-        // Calcolo dell'intervallo temporale reale coperto dai batch presenti
         OffsetDateTime minTs = probeBatches.stream()
                 .map(ProbeBatch::getSentAt)
                 .filter(Objects::nonNull)
@@ -91,8 +90,14 @@ public class AnalysisService {
         double effectiveWindow;
         if (minTs != null && maxTs != null) {
             double spanSeconds = Math.abs(Duration.between(minTs, maxTs).toMillis() / 1000.0);
-            // Ampiezza effettiva = span tra primo e ultimo batch + step del singolo batch
-            effectiveWindow = Math.min(windowSize, Math.max(slideStep, spanSeconds + slideStep));
+            
+            // I batch dal simulatore hanno granularità di 1s.
+            // La copertura temporale reale è lo span tra primo e ultimo + la durata dell'ultimo batch (1.0s)
+            double realCoverage = spanSeconds + 1.0;
+
+            // Limita tra un minimo di sicurezza (es. slideStep o 5s) e la windowSize (60s)
+            // per evitare moltiplicatori matematicamente instabili su frazioni di secondo
+            effectiveWindow = Math.min(windowSize, Math.max(slideStep, realCoverage));
         } else {
             effectiveWindow = windowSize;
         }

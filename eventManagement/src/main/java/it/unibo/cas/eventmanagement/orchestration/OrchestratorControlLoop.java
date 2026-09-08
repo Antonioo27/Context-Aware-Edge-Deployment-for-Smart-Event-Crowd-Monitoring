@@ -28,7 +28,7 @@ public class OrchestratorControlLoop {
     private static final Logger logger = LoggerFactory.getLogger(OrchestratorControlLoop.class);
 
     // Soglia di isteresi
-    private static final double ISTERESI_THRESHOLD = 15.0;
+    private static final double ISTERESI_THRESHOLD = 20.0;
 
     @Autowired
     private OrchestrationController orchestrationController;
@@ -47,6 +47,10 @@ public class OrchestratorControlLoop {
 
     @Autowired
     private NodeService nodeService;
+
+    // Periodo di non migrazione: un'area non può rimigrare prima di 60 secondi
+    private static final long MIGRATION_COOLDOWN_MS = 60_000;
+    private final Map<String, Long> lastMigrationTimestamps = new HashMap<>();
 
     @Scheduled(fixedRate = 10000)
     public void tick() {
@@ -209,6 +213,8 @@ public class OrchestratorControlLoop {
         // Insieme dei nodi che hanno già evacuato 1 Pod in questo tick
         Set<String> nodesShedInThisTick = new HashSet<>();
 
+        long now = System.currentTimeMillis();
+
         // EVALUATE and DECIDE per ogni area
         for (Area area : sortedAreas) {
             String currentNode = currentAssignments.get(area.getName());   
@@ -216,6 +222,16 @@ public class OrchestratorControlLoop {
             Double currentCpu = nodeCpuMap.getOrDefault(currentNode, 0.0);
             boolean isCurrentNodeOverloaded = currentCpu > CPU_OVERLOAD_THRESHOLD;
             
+            // COOLDOWN CHECK: se l'area è sana ed è stata migrata di recente, non toccarla
+            if (currentNodeIsHealthy) {
+                long lastMigrated = lastMigrationTimestamps.getOrDefault(area.getName(), 0L);
+                if (now - lastMigrated < MIGRATION_COOLDOWN_MS) {
+                    logger.debug(" [COOLDOWN] Area '{}' in fase di stabilizzazione (migrata {}s fa). Skip.",
+                            area.getName(), (now - lastMigrated) / 1000);
+                    continue;
+                }
+            }
+
             // Stato attuale dell'area
             State currentState = area.getState() != null ? area.getState() : State.NONE;
 
@@ -307,6 +323,9 @@ public class OrchestratorControlLoop {
                 );
 
                 if (success) {
+
+                    // Salva il momento dell'avvenuta migrazione per attivare il cooldown
+                    lastMigrationTimestamps.put(area.getName(), now);
                     // Aggiorna bilanciamento locale
                     if (nodePodCount.containsKey(currentNode)) {
                         nodePodCount.put(currentNode, nodePodCount.get(currentNode) - 1);
