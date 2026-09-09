@@ -19,6 +19,23 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+
+/**
+ * Asynchronous MQTT client for the Event Analysis microservice. It connects to the co-located broker instance
+ * to ingest sensor probe batches and transmit instantaneous alerts.
+ * 
+ * Responsibilities:
+ * 
+ * - Connection handling: Connects in the background and automatically retries every 
+ *   5 seconds if the broker is unreachable, preventing the application from freezing at startup.
+ * - Crash notification (LWT): Sets a Last Will message so the broker automatically notifies 
+ *   others if this service crashes unexpectedly.
+ * - Fast-Path alert delivery: Instantly publishes critical crowd danger alerts directly 
+ *   to MQTT topics for the frontend dashboard, avoiding slow database operations.
+ * - Message confirmation: Sends manual delivery acknowledgments (manual acks) for QoS 1 
+ *   messages to ensure sensor data is not lost.
+ */
+
 @Slf4j
 @Component
 public class MqttBrokerClient implements MqttCallbackExtended {
@@ -27,7 +44,6 @@ public class MqttBrokerClient implements MqttCallbackExtended {
     private final MqttAsyncClient client;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean stopping = new AtomicBoolean(false);
-    // Inizializzazione ObjectMapper con supporto a OffsetDateTime (ISO-8601)
     private final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -37,15 +53,25 @@ public class MqttBrokerClient implements MqttCallbackExtended {
     @Setter
     private MqttMessageListener messageListener;
 
+    /**
+     * Listener interface to notify external components of connection lifecycle state transitions.
+     */
     public interface MqttConnectionListener {
         void onConnectComplete(boolean reconnect);
         void onConnectionLost(Throwable cause);
     }
 
+    /**
+     * Listener interface to deliver incoming raw MQTT packet payloads and delivery metadata.
+     */
     public interface MqttMessageListener {
         void onMessageArrived(String topic, int mid, int qos, byte[] payload);
     }
 
+    /**
+     * Instantiates the client using environment and configuration properties, establishing
+     * in-memory persistence and registering callback handlers without opening the socket.
+     */
     public MqttBrokerClient(AnalysisProperties config) {
         this.config = config;
         try {
@@ -59,6 +85,11 @@ public class MqttBrokerClient implements MqttCallbackExtended {
         }
     }
 
+    /**
+     * Asynchronously initiates the connection to the designated MQTT broker.
+     * Registers a Last Will and Testament (LWT) payload and schedules automatic 5-second
+     * background retries on failure.
+     */
     public void connect() {
         if (stopping.get()) return;
 
@@ -92,6 +123,10 @@ public class MqttBrokerClient implements MqttCallbackExtended {
         }
     }
 
+    /**
+     * Constructs and initializes the connection parameters including keep-alive intervals,
+     * automatic client-side reconnection, clean session parameters, and optional credentials.
+     */
     private @NonNull MqttConnectOptions getMqttConnectOptions() {
         MqttConnectOptions options = new MqttConnectOptions();
         options.setCleanSession(config.mqttCleanSession());
@@ -125,7 +160,6 @@ public class MqttBrokerClient implements MqttCallbackExtended {
                 String json = objectMapper.writeValueAsString(payload);
                 byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
                 
-                // Sfrutta il metodo publish già esistente
                 this.publish(topic, bytes, 1, false);
                 log.info("[FAST-PATH] Alert pubblicato su MQTT topic: {}", topic);
             } else {
@@ -136,6 +170,10 @@ public class MqttBrokerClient implements MqttCallbackExtended {
         }
     }
 
+    /**
+     * Manually acknowledges a received message when manual acknowledgment mode is enabled,
+     * confirming consumption to the broker for QoS 1 delivery.
+     */
     public void ack(int mid, int qos) {
         if (!config.manualAck() || qos == 0) {
             return;
@@ -157,6 +195,12 @@ public class MqttBrokerClient implements MqttCallbackExtended {
         return stopping.get();
     }
 
+    /**
+     * Handles the graceful shutdown of the MQTT client before the Spring bean is destroyed.
+     * Invoked automatically on SIGTERM during Pod termination or migration. It stops background
+     * retry tasks, sends a clean MQTT DISCONNECT packet to cancel the Last Will message,
+     * and releases local socket resources.
+     */
     @PreDestroy
     public void disconnect() {
         stopping.set(true);
@@ -173,6 +217,10 @@ public class MqttBrokerClient implements MqttCallbackExtended {
         }
     }
 
+    /**
+     * Callback triggered by the MQTT library when the connection handshake is established or restored.
+     * It forwards the event to the registered listener to handle subscriptions or state recovery.
+     */
     @Override
     public void connectComplete(boolean reconnect, String serverURI) {
         if (connectionListener != null) {
@@ -180,6 +228,10 @@ public class MqttBrokerClient implements MqttCallbackExtended {
         }
     }
 
+    /**
+     * Callback triggered by the MQTT library when the connection to the broker drops unexpectedly.
+     * It forwards the failure reason to the registered listener.
+     */
     @Override
     public void connectionLost(Throwable cause) {
         if (connectionListener != null) {
@@ -187,6 +239,11 @@ public class MqttBrokerClient implements MqttCallbackExtended {
         }
     }
 
+    /**
+     * Callback triggered whenever a new MQTT message is received on a subscribed topic.
+     * It extracts the topic name, message identifier, QoS level, and raw payload bytes,
+     * forwarding them to the configured message listener for processing.
+     */
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         if (messageListener != null) {
@@ -196,6 +253,5 @@ public class MqttBrokerClient implements MqttCallbackExtended {
 
     @Override
     public void deliveryComplete(IMqttDeliveryToken token) {
-        // Not used
     }
 }

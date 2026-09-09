@@ -20,9 +20,19 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Subscribes to an MQTT topic on the LOCAL broker, delegates deserialization to
- * ProbeBatchParser,
- * handles deduplication, and puts batches in a thread-safe queue.
+ * Ingress subscriber component for the Event Analysis microservice.
+ * It listens to the local MQTT broker on the designated topic, deserializes raw binary payloads into domain entities,
+ * filters duplicates, and buffers the data in-memory queue consumed by the sliding window analysis engine.
+ * 
+ * How it works:
+ * - Message Queue: Stores received MQTT batches in an internal queue so that 
+ *   incoming network packets do not block the analysis loop.
+ * - Memory Protection: Discards new incoming batches if the queue is full, 
+ *   preventing out-of-memory errors when data arrives too fast.
+ * - Duplicate Filtering: Checks batch identifiers to ignore duplicated messages 
+ *   caused by network retries.
+ * - Health Statistics: Tracks delivery delays (latency), packet counts, 
+ *   and errors to monitor data feed status.
  */
 @Slf4j
 @Component
@@ -45,11 +55,14 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         this.deduplicator = new MessageDeduplicator(config.dedupWindow());
         this.queue = new ArrayBlockingQueue<>(config.maxQueueSize());
 
-        // Register as listener
         this.mqttClient.setConnectionListener(this);
         this.mqttClient.setMessageListener(this);
     }
 
+    /**
+     * Initiates the connection sequence toward the local MQTT broker using the configured credentials,
+     * QoS level, and subscription parameters.
+     */
     public void start() {
         log.info("Starting subscriber area={} client_id={} topic={} qos={} clean_session={}",
                 config.areaId(), config.subscriberClientId(), config.topicProbes(),
@@ -58,6 +71,10 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         mqttClient.connect();
     }
 
+    /**
+     * Blocks the calling thread until the MQTT client successfully connects and completes the initial
+     * topic subscription handshake, or until the specified timeout elapsed.
+     */
     public boolean waitConnected(long timeout, TimeUnit unit) {
         try {
             return connectedEvent.await(timeout, unit);
@@ -79,8 +96,10 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         }
     }
 
-    // Consumer API
-
+    /**
+     * Retrieves and removes the next probe batch from the internal queue, blocking up to the
+     * specified wait time if no elements are immediately present.
+     */
     public ProbeBatch get(long timeout, TimeUnit unit) {
         try {
             return queue.poll(timeout, unit);
@@ -94,7 +113,6 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         mqttClient.ack(batch.getMid(), batch.getQos());
     }
 
-    // Diagnostics
 
     public boolean isConnected() {
         return mqttClient.isConnected();
@@ -104,20 +122,24 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         return queue.size();
     }
 
-    public boolean isHealthy(double maxSilenceS) {
-        if (!isConnected()) {
-            return false;
-        }
-        OffsetDateTime last;
-        synchronized (lock) {
-            last = stats.getLastBatchAt();
-        }
-        if (last == null) {
-            return true; // just started
-        }
-        double silenceS = java.time.Duration.between(last, OffsetDateTime.now()).toNanos() / 1_000_000_000.0;
-        return silenceS <= maxSilenceS;
-    }
+    /**
+     * Evaluate the health of the incoming data ingestion by checking broker connect and 
+     * the elapsed time since the most recent batch reception-
+     */
+    // public boolean isHealthy(double maxSilenceS) {
+    //     if (!isConnected()) {
+    //         return false;
+    //     }
+    //     OffsetDateTime last;
+    //     synchronized (lock) {
+    //         last = stats.getLastBatchAt();
+    //     }
+    //     if (last == null) {
+    //         return true;
+    //     }
+    //     double silenceS = java.time.Duration.between(last, OffsetDateTime.now()).toNanos() / 1_000_000_000.0;
+    //     return silenceS <= maxSilenceS;
+    // }
 
     public Map<String, Object> getStatsSnapshot() {
         synchronized (lock) {
@@ -146,8 +168,11 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         return mqttClient.isStopping();
     }
 
-    // Callbacks from MqttBrokerClient
 
+    /**
+     * Connection callback invoked when the broker handshake succeeds or reconnects.
+     * Subscribes to the target probe topic and releases the connection countdown latch.
+     */
     @Override
     public void onConnectComplete(boolean reconnect) {
         synchronized (lock) {
@@ -171,9 +196,13 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         synchronized (lock) {
             stats.setConnected(true);
         }
-        connectedEvent.countDown(); // unblocks waitConnected
+        connectedEvent.countDown();
     }
 
+    /**
+     * Connection callback invoked when the transport connection to the broker is lost.
+     * Updates internal connectivity statistics and logs the unexpected failure reason.
+     */
     @Override
     public void onConnectionLost(Throwable cause) {
         synchronized (lock) {
@@ -190,6 +219,11 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
         }
     }
 
+    /**
+     * Ingress pipeline callback triggered upon receiving a raw MQTT message.
+     * Parses the payload, rejects malformed content, drops duplicates, validates queue capacity,
+     * enqueues valid batches, and updates live transport latency statistics.
+     */
     @Override
     public void onMessageArrived(String topic, int mid, int qos, byte[] payload) {
         OffsetDateTime receivedAt = OffsetDateTime.now();
@@ -210,7 +244,6 @@ public class ProbeSubscriber implements MqttBrokerClient.MqttConnectionListener,
             return;
         }
 
-        // Duplicates handling
         if (deduplicator.isDuplicateOrAdd(batch.getBatchId())) {
             synchronized (lock) {
                 stats.setBatchesDuplicated(stats.getBatchesDuplicated() + 1);

@@ -4,7 +4,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
- * Configuration properties for the analysis service.
+ * Immutable configuration record for the Event Analysis service.
+ *
+ * This record maps application properties prefixed with "analysis" from application.properties
+ * or Kubernetes environment variables into typed fields.
+ *
+ * - Broker Connectivity: Configures MQTT host, port, credentials, and session options for the local broker.
+ * - Queue and Backpressure: Sets maximum queue capacity and deduplication cache size.
+ * - Sliding Window Analytics: Defines window observation length (windowSize, W) and execution frequency (slideStep, S).
+ * - Fail-Fast Validation: Verifies all parameters during Spring context startup to prevent runtime failures.
  */
 @ConfigurationProperties(prefix = "analysis")
 public record AnalysisProperties(
@@ -23,9 +31,8 @@ public record AnalysisProperties(
         @DefaultValue("1") int reconnectMinDelay,
         @DefaultValue("30") int reconnectMaxDelay,
         @DefaultValue("INFO") String logLevel,
-        @DefaultValue("60.0") double windowSize, // W: ampiezza temporale della finestra in secondi
-        @DefaultValue("5.0") double slideStep    // S: frequenza del ciclo di calcolo in secondi
-
+        @DefaultValue("60.0") double windowSize,
+        @DefaultValue("5.0") double slideStep 
 ) {
     public AnalysisProperties {
         if (areaId == null || areaId.isBlank()) {
@@ -55,7 +62,6 @@ public record AnalysisProperties(
         if (dedupWindow < 1) {
             throw new IllegalArgumentException("dedupWindow must be >= 1");
         }
-        // --- Validazione Parametri Sliding Window ---
         if (windowSize <= 0) {
             throw new IllegalArgumentException("windowSize must be > 0");
         }

@@ -71,13 +71,6 @@ const CreateEvent: React.FC<Props> = ({ onEventCreated, onSkipToDashboard }) => 
                   <input type="text" className="form-control" id="city" name="city" required value={formData.city} onChange={handleChange} data-testid="create-event-city" />
                 </div>
                 <div className="d-flex justify-content-between align-items-center mt-4">
-                  <button 
-                    type="button" 
-                    className="btn btn-outline-secondary"
-                    onClick={onSkipToDashboard}
-                  >
-                    Salta e vai alla Dashboard
-                  </button>
                   <button type="submit" className="btn btn-primary" disabled={loading} data-testid="create-event-submit">
                     {loading ? 'Creazione in corso...' : 'Crea Evento'}
                   </button>
