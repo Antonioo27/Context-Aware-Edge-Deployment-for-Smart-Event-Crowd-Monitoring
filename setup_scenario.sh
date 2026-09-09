@@ -1,11 +1,35 @@
 #!/bin/bash
 set -e
-API_URL="http://192.168.58.2:30080/api"
-echo "Configuring environment..."
+# Carica le variabili da .env se presente
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
+
+API_URL="${API_URL:-http://192.168.58.2:30080/api}"
+
+# Verifica raggiungibilità backend
+if ! curl -s --connect-timeout 2 "$API_URL/nodes" > /dev/null 2>&1; then
+    # Se l'URL configurato non risponde, tenta fallback su localhost:8080 (port-forward) o NodePort 192.168.58.2:30080
+    if curl -s --connect-timeout 1 "http://localhost:8080/api/nodes" > /dev/null 2>&1; then
+        echo "Avviso: $API_URL non risponde. Uso fallback su http://localhost:8080/api (port-forward)."
+        API_URL="http://localhost:8080/api"
+    elif curl -s --connect-timeout 1 "http://192.168.58.2:30080/api/nodes" > /dev/null 2>&1; then
+        echo "Avviso: $API_URL non risponde. Uso fallback su http://192.168.58.2:30080/api (NodePort)."
+        API_URL="http://192.168.58.2:30080/api"
+    else
+        echo "Errore: Backend non raggiungibile su $API_URL"
+        echo "Assicurati che il cluster e/o il port-forward siano attivi (es. ./start_cluster_pf.sh --pf)"
+        exit 1
+    fi
+fi
+
+echo "Configuring environment (target: $API_URL)..."
 
 # 1. Sincronizzazione dei nodi K8s
 echo "Sincronizzazione nodi Kubernetes..."
-curl -s -X POST $API_URL/nodes/sync-k8s > /dev/null
+curl -s -X POST "$API_URL/nodes/sync-k8s" > /dev/null
 sleep 2
 
 # 2. Posizionamento Equidistante dei Nodi Edge intorno a Piazza Maggiore

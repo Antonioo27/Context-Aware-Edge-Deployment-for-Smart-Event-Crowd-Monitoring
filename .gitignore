@@ -42,13 +42,11 @@ Thumbs.db
 .env
 *.local
 
-# --- Traccia Progetto ---
-Smart Event Crowd Monitoring.md
-
-# --- Comandi k8s ---
-k8s_commands.md
+# --- Documentazione ---
+doc
 
 # --- Node.js ---
 ./event-frontend/node_modules
 
-start_cluster_pf.sh
+# --- Tests --- 
+eventManagement/src/test/java/it/unibo/cas/eventmanagement/utils

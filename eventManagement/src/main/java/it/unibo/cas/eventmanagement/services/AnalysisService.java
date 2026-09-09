@@ -14,10 +14,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Service responsible for processing crowd analysis statistics, managing area congestion states,
+ * generating proactive prediction-based alerts, and delivering future prediction trends.
+ */
 @Service
 @Slf4j
 public class AnalysisService {
@@ -37,6 +42,9 @@ public class AnalysisService {
     @Value("${eventmanagement.analysis.prediction.window-minutes:2}")
     private int predictionWindowMinutes;
 
+    @Value("${eventmanagement.analysis.prediction.default-step-size:15}")
+    private int defaultStepSize;
+
     @Autowired
     private AnalysisStatsRepository analysisStatsRepository;
 
@@ -49,11 +57,10 @@ public class AnalysisService {
     @Autowired
     private NotifyService notifyService;
 
-    // Traccia l'ultimo alert di predizione inviato per ogni area (per evitare spam)
     private final Map<String, OffsetDateTime> lastPredictionAlerts = new ConcurrentHashMap<>();
 
     /**
-     * Adds a new analysis to the repository.
+     * Adds a new analysis to the repository and triggers proactive crowd evaluation.
      * 
      * @param analysisStats the analysis to add
      * @return the added analysis
@@ -66,39 +73,34 @@ public class AnalysisService {
         log.info("Added analysis stats to analysis: {}", analysisStats);
 
         setAreaState(analysisStats.getEstimatedPeople(), analysisStats.getAreaId());
-
-        // Esegue la predizione dell'affollamento futuro
         checkPrediction(as);
 
         return as;
     }
 
     /**
-     * Esegue la predizione dell'affollamento e lancia un alert proattivo se
-     * necessario.
+     * Executes crowd prediction for the incoming statistics and emits proactive alerts when critical thresholds are exceeded.
      * 
-     * @param latestStats l'ultima statistica arrivata
+     * @param latestStats latest recorded analysis statistics
      */
     private void checkPrediction(AnalysisStats latestStats) {
         if (latestStats.getTs() == null) {
             return;
         }
 
-        // Recuperiamo lo storico recente
         OffsetDateTime windowStart = latestStats.getTs().minusMinutes(predictionWindowMinutes);
         List<AnalysisStats> history = analysisStatsRepository.findRecentByAreaId(latestStats.getAreaId(), windowStart);
 
-        Double predictedPeople = LinearRegressionPredictor.predictFutureCrowd(history, predictionHorizonMinutes);
+        int maxCapacity = areaService.getCapacity(latestStats.getAreaId());
+        Double predictedPeople = LinearRegressionPredictor.predictFutureCrowd(history, predictionHorizonMinutes, maxCapacity);
 
         if (predictedPeople != null) {
             log.info("Predicted people in area {} in {} minutes: {}", latestStats.getAreaId(), predictionHorizonMinutes,
                     predictedPeople.intValue());
 
-            int maxCapacity = areaService.getCapacity(latestStats.getAreaId());
             double predictedDensity = predictedPeople / maxCapacity;
 
             if (predictedDensity > criticalThreshold) {
-                // Verifica il cooldown di 2 minuti per l'area
                 OffsetDateTime lastAlert = lastPredictionAlerts.get(latestStats.getAreaId());
                 if (lastAlert == null || OffsetDateTime.now().isAfter(lastAlert.plusMinutes(2))) {
                     
@@ -114,11 +116,8 @@ public class AnalysisService {
                                     predictionHorizonMinutes, predictedPeople.intValue()))
                             .build();
 
-                    // Creiamo l'alert e lo notifichiamo
                     Alert alert = alertService.addAlert(alertDTO);
                     notifyService.notifyAutomaticAlert(alert);
-                    
-                    // Aggiorna il timestamp dell'ultimo alert
                     lastPredictionAlerts.put(latestStats.getAreaId(), OffsetDateTime.now());
                 } else {
                     log.debug("Prediction alert for area {} skipped (cooldown active)", latestStats.getAreaId());
@@ -172,36 +171,42 @@ public class AnalysisService {
     }
 
     /**
-     * Calcola e restituisce la lista dei punti futuri predetti (trend) per il
-     * front-end.
+     * Computes and returns the list of predicted future trend points for the frontend.
      * 
-     * @param areaId l'id dell'area
-     * @return lista di DTO contenenti il timestamp e il numero di persone stimate
-     *         nel futuro
+     * @param areaId area identifier
+     * @return list of prediction points containing timestamps and estimated crowd sizes
      */
     public List<PredictionPointDTO> getPredictionTrendByArea(String areaId) {
         if (areaId == null) {
             throw new IllegalArgumentException("Area id is null");
         }
 
-        // Recuperiamo l'ultimo dato registrato per l'area
         AnalysisStats latestStats = analysisStatsRepository.findFirstByAreaIdOrderByTsDesc(areaId);
         if (latestStats == null) {
             return java.util.Collections.emptyList();
         }
 
-        // Recuperiamo la finestra storica basandoci sul timestamp più recente
         OffsetDateTime windowStart = latestStats.getTs().minusMinutes(predictionWindowMinutes);
         List<AnalysisStats> history = analysisStatsRepository.findRecentByAreaId(areaId, windowStart);
 
-        // Se disponibile, usiamo la window size originale come "passo" temporale (step)
-        // altrimenti usiamo un default (es. 20 secondi) per la densità dei punti sul
-        // grafico
-        int stepSeconds = latestStats.getWindowSeconds() > 0 ? latestStats.getWindowSeconds() : 20;
+        int maxCapacity = areaService.getCapacity(areaId);
 
-        return LinearRegressionPredictor.predictFutureTrend(history, predictionHorizonMinutes, stepSeconds);
+        int stepSeconds = defaultStepSize;
+        if (history.size() >= 2) {
+            long diff = ChronoUnit.SECONDS.between(
+                    history.get(history.size() - 2).getTs(),
+                    history.getLast().getTs());
+            if (diff >= 2 && diff <= 120) {
+                stepSeconds = (int) diff;
+            }
+        }
+
+        return LinearRegressionPredictor.predictFutureTrend(history, predictionHorizonMinutes, stepSeconds, maxCapacity);
     }
 
+    /**
+     * Deletes all recorded analysis statistics.
+     */
     public void deleteAnalysis() {
         analysisStatsRepository.deleteAll();
     }
