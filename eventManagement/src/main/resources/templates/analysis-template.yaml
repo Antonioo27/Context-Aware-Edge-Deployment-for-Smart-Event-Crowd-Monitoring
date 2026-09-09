@@ -30,6 +30,12 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
+        - name: ANALYSIS_SLIDE_STEP
+          valueFrom:
+            configMapKeyRef:
+              name: event-analysis-config
+              key: EVENTANALYSIS_ANALYSIS_SLIDE_STEP
+              optional: true
         - name: EVENTANALYSIS_PROBE_THRESHOLD_RSSI
           valueFrom:
             configMapKeyRef:

@@ -27,6 +27,9 @@ public class AlertService {
     @Autowired
     private MqttBrokerClient mqttBrokerClient;
 
+    // Contatore di stato persistente nel Pod (non limitato dalla dimensione di AnalysisHistory)
+    private int consecutiveStreak = 0;
+
     /**
      * Check if there are 4 or more consecutive highly rising trends in the analysis
      * history.
@@ -41,24 +44,24 @@ public class AlertService {
             return null;
         }
 
-        int consecutiveHighlyRising = 0;
-        for (int i = stats.size() - 1; i >= 0; i--) {
-            if (stats.get(i).getTrend() == Trend.HIGHLY_RISING) {
-                consecutiveHighlyRising++;
-            } else {
-                // Se incontra un trend diverso (es. RISING, STABLE), la catena attuale si interrompe
-                break;
-            }
+        AnalysisStats latestStat = stats.get(stats.size() - 1);
+        // Aggiornamento dello streak basato sull'ultimo trend calcolato
+        if (latestStat.getTrend() == Trend.HIGHLY_RISING) {
+            consecutiveStreak++;
+        } else {
+            consecutiveStreak = 0; // Se il trend cambia (STABLE, RISING, DOWNING), la serie si azzera
+            return null;
         }
 
-        if (consecutiveHighlyRising >= 4 && (consecutiveHighlyRising - 4) % 3 == 0) {
-            log.warn("[ALERT TRIGGER] Rilevati {} HIGHLY_RISING consecutivi per l'area {}", 
-                    consecutiveHighlyRising, area.id());
+        // Regola modulare: scatta a 3 (1° alert), silenzio a 4,5 scatta a 5 (2° alert), silenzio a 6,7 scatta a 8 (3° alert)...
+        if (consecutiveStreak >= 3 && (consecutiveStreak - 3) % 3 == 0) {
+            log.warn("[ALERT TRIGGER] Area {}: rilevati {} HIGHLY_RISING consecutivi (Densità: {} pers/m²)", 
+                    area.id(), consecutiveStreak, String.format("%.2f", latestStat.getDensity()));
 
             return Alert.builder()
                     .area_id(area.id())
                     .ts(OffsetDateTime.now())
-                    .cause("Forte crescita sostenuta della folla (" + consecutiveHighlyRising + " trend HIGHLY_RISING consecutivi)")
+                    .cause(String.format("Forte crescita sostenuta della folla (%d trend HIGHLY_RISING consecutivi)", consecutiveStreak))
                     .build();
         }
 

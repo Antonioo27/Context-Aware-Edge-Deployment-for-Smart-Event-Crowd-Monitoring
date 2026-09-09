@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Genera un tag univoco con il timestamp Unix
 TAG=$(date +%s)
 IMAGE_NAME="event-analysis:${TAG}"
 
@@ -13,19 +12,17 @@ echo "========================================="
 echo "1/4 Compilazione microservizio Spring Boot..."
 ./gradlew bootJar
 
-# 2. Build dell'immagine Docker locale (tag timestamp + tag latest)
+# 2. Build dell'immagine Docker locale (doppio tag)
 echo "2/4 Build dell'immagine Docker locale..."
 docker build -t ${IMAGE_NAME} -t event-analysis:latest .
 
-# 3. Caricamento di entrambi i tag su TUTTI i nodi di Minikube
+# 3. Caricamento su TUTTI i nodi Minikube
 echo "3/4 Caricamento immagini su tutti i nodi di Minikube..."
 minikube image load ${IMAGE_NAME} -p edge-cluster
 minikube image load event-analysis:latest -p edge-cluster
 
 # 4. Aggiornamento immagine sui Deployment di analisi attivi
 echo "4/4 Aggiornamento dei Pod di analisi attivi..."
-
-# Recupera tutti i deployment attivi che iniziano con event-analysis-
 DEPLOYMENTS=$(kubectl get deployment -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep '^event-analysis-' || true)
 
 if [ -n "$DEPLOYMENTS" ]; then
