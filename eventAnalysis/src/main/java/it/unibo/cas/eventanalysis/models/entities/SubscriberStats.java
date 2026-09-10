@@ -4,9 +4,7 @@ import lombok.Data;
 
 import java.time.OffsetDateTime;
 
-/**
- *
- */
+
 @Data
 public class SubscriberStats {
     private boolean connected = false;

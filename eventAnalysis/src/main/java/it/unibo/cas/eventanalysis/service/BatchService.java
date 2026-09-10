@@ -22,7 +22,7 @@ public class BatchService {
      */
     public boolean batchIsLast(ProbeBatch batch, ProbeBatch lastBatch) {
         if (lastBatch == null) {
-            return true; // if there is no last batch, it's the first one, so sequence is fine
+            return true;
         }
         return batch.getBatchId() == (lastBatch.getBatchId() + 1);
     }

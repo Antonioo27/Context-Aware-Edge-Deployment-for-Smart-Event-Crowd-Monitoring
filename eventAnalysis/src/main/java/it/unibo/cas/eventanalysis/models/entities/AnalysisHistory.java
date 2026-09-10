@@ -2,13 +2,10 @@ package it.unibo.cas.eventanalysis.models.entities;
 
 import lombok.Data;
 import lombok.Getter;
-import org.springframework.context.annotation.Bean;
 
 import java.util.ArrayList;
 
-/**
- *
- */
+
 @Data
 @Getter
 public class AnalysisHistory {

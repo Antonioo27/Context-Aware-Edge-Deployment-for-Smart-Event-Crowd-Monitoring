@@ -22,8 +22,15 @@ import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Entry point of the analysis service. For now: connects to the broker
- * and consumes batches. Windowing and analysis will be injected in this loop.
+ * Main execution engine for the crowd analysis microservice.
+ *
+ * Responsibilities:
+ * - Runs a dedicated background worker thread to process incoming sensor data without blocking application startup.
+ * - Ingests probe batches from the subscriber queue, validates timestamps, and filters weak signals by RSSI.
+ * - Manages an in-memory sliding window buffer of recent batches.
+ * - Periodically purges expired batches and runs crowd estimation calculations every slide step interval.
+ * - Triggers dual-path alerts when dangerous crowd growth patterns are detected.
+ * - Sends completed analysis statistics to the central Event Management backend service.
  */
 @Slf4j
 @Service
@@ -60,15 +67,23 @@ public class RunningService {
 
     private volatile boolean running = true;
 
+    /**
+     * Starts the subscriber client and spawns the background analysis thread when the Spring application is ready.
+     */
     @EventListener(ApplicationReadyEvent.class)
     public void startAnalysisLoop() {
         subscriber.start();
 
-        // Start in a separate thread to not block Spring Boot startup
         Thread analysisThread = new Thread(this::runLoop, "AnalysisLoopThread");
         analysisThread.start();
     }
 
+    /**
+     * Continuous background loop executing batch ingestion and periodic analysis.
+     * Consumes batches from the queue, drops obsolete batches, applies RSSI filtering,
+     * buffers valid data, purges expired batches when the slide timer expires,
+     * and coordinates alert checks and backend reporting.
+     */
     private void runLoop() {
         log.info("[AREA {}] Starting analysis area={} | broker {}:{} | topic={}",
                 area.id(), config.areaId(), config.mqttHost(), config.mqttPort(), config.topicProbes());
@@ -77,8 +92,8 @@ public class RunningService {
             log.warn("[AREA {}] Broker unreachable during startup: will keep trying in background", area.id());
         }
 
-        double windowSeconds = analysisService.getWindowSize(); // W = 60s
-        double stepSeconds = analysisService.getSlideStep();    // S = 5s
+        double windowSeconds = analysisService.getWindowSize(); 
+        double stepSeconds = analysisService.getSlideStep();    
 
         long stepNanos = (long) (stepSeconds * 1_000_000_000L);
         long nextStats = System.nanoTime() + stepNanos;
@@ -93,9 +108,8 @@ public class RunningService {
                 OffsetDateTime batchTime = batch.getSentAt() != null ? batch.getSentAt() : now;
                 long ageSeconds = Duration.between(batchTime, now).getSeconds();
 
-                // Filtro temporale, se batch è più vecchio della finestra di osservazione W è un residuo
                 if (ageSeconds > (long) windowSeconds || ageSeconds < -5) {
-                    log.warn("[AREA {}] Drained STALE batch id={} (age: {}s > window: {}s) - Discarded from calculation",
+                    log.warn("[AREA {}] STALE batch id={} (age: {}s > window: {}s) - Discarded from calculation",
                             area.id(), batch.getBatchId(), ageSeconds, (long) windowSeconds);
                     lastProcessedBatch = batch;
                     continue;
@@ -167,13 +181,14 @@ public class RunningService {
     }
     
     /**
-     * Remove from the memory batch wich real timestamp is older than the windowSeconds respect to now.
+     * Removes batches from the in-memory buffer whose generation timestamp is older than the configured window size.
+     *
+     * @param windowSeconds the time window duration in seconds
      */
     private void removeExpiredBatches(double windowSeconds) {
         OffsetDateTime cutoff = OffsetDateTime.now().minusSeconds((long) windowSeconds);
         int initialSize = probeBatches.size();
 
-        // Rimuove in un solo passaggio tutti i batch inviati prima del tempo limite
         probeBatches.removeIf(b -> b.getSentAt() != null && b.getSentAt().isBefore(cutoff));
 
         int removedCount = initialSize - probeBatches.size();
@@ -182,7 +197,12 @@ public class RunningService {
         }
     }
 
-
+    /**
+     * Executes crowd estimation on the currently buffered batches, computes crowd density,
+     * updates the analysis history, and evaluates the crowd growth trend.
+     *
+     * @return the computed {@link AnalysisStats} record
+     */
     private AnalysisStats doAnalysis() {
         long estimatedPeople = analysisService.estimatePeople(probeBatches);
         double density = analysisService.density(estimatedPeople);
@@ -202,6 +222,9 @@ public class RunningService {
         return analysisStats;
     }
 
+    /**
+     * Gracefully stops the worker loop and shuts down the subscriber when the Spring context is destroyed.
+     */
     @PreDestroy
     public void stop() {
         log.info("Arresto graceful di RunningService per area={}...", config.areaId());

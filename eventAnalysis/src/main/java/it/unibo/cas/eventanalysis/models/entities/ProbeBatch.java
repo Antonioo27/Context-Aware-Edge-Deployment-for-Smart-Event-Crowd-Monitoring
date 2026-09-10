@@ -15,11 +15,11 @@ import java.util.List;
 public class ProbeBatch {
     private String areaId;
     private long batchId;
-    private OffsetDateTime sentAt;       // when the simulator published (UTC)
-    private OffsetDateTime receivedAt;   // when we received (UTC)
-    private int countDeclared;           // "count" field declared in the message
+    private OffsetDateTime sentAt;       
+    private OffsetDateTime receivedAt;   
+    private int countDeclared;           
     private List<Probe> probes;
-    private int malformedProbes;         // discarded probes
+    private int malformedProbes;         
 
     // MQTT Metadata: for manual ack.
     @Builder.Default

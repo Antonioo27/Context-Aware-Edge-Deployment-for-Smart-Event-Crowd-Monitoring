@@ -14,6 +14,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 
+/** 
+ * Service that performs crowd analysis for a monitored area.
+ * 
+ * Responsabilites : 
+ * - Extracts unique device MAC addresses from probe batches to avoid counting duplicates.
+ * - Estimates the total number of people using a Poisson probability model based on device transmission intervals.
+ * - Computes the effective time window dynamically to prevent wrong estimations during startup or pod migration.
+ * - Computes crowd density (people per square meter) using the area dimensions.
+ * - Determines the crowd trend (such as STABLE, RISING, or HIGHLY_RISING) using linear regression on recent density values.
+ * 
+*/
 @Service
 public class AnalysisService {
     @Getter
@@ -61,13 +72,12 @@ public class AnalysisService {
     }
 
     /**
-     * estimate the number of person computing the effective temporal window (W_eff)
-     * cover by the batches actually in memory avoid holes in the warm-up.
-     * 
-     * @param probeBatches
-     * 
-     * @return the estimated people
-    */
+     * Estimates the total population by checking the real time interval covered by batches in memory.
+     * Using an effective window prevents underestimating people when the pod starts or migrates.
+     *
+     * @param probeBatches list of probe batches in memory
+     * @return estimated number of people in the area
+     */
     public long estimatePeople(List<ProbeBatch> probeBatches) {
         if (probeBatches == null || probeBatches.isEmpty()) {
             return 0;
@@ -91,12 +101,8 @@ public class AnalysisService {
         if (minTs != null && maxTs != null) {
             double spanSeconds = Math.abs(Duration.between(minTs, maxTs).toMillis() / 1000.0);
             
-            // I batch dal simulatore hanno granularità di 1s.
-            // La copertura temporale reale è lo span tra primo e ultimo + la durata dell'ultimo batch (1.0s)
             double realCoverage = spanSeconds + 1.0;
 
-            // Limita tra un minimo di sicurezza (es. slideStep o 5s) e la windowSize (60s)
-            // per evitare moltiplicatori matematicamente instabili su frazioni di secondo
             effectiveWindow = Math.min(windowSize, Math.max(slideStep, realCoverage));
         } else {
             effectiveWindow = windowSize;
@@ -106,11 +112,11 @@ public class AnalysisService {
     }
 
     /**
-     * Estimate the number of people based on the number of different MAC addresses.
-     * 
-     * @param numDifferentMac the number of different MAC addresses
-     * @param effectiveWindow actually size of the window 
-     * @return the estimated number of people
+     * Calculates the estimated number of people using the formula: N = distinctMac / (1 - exp(-effectiveWindow / mean)).
+     *
+     * @param numDifferentMac number of unique MAC addresses detected
+     * @param effectiveWindow actual time duration in seconds covered by the data
+     * @return estimated population count
      */
     public long estimatePeople(int numDifferentMac, double effectiveWindow) {
         if (effectiveWindow <= 0.0) {
@@ -122,32 +128,17 @@ public class AnalysisService {
         }
         return Math.round(numDifferentMac / denominator);
     }
-    /**
-     * Calculate the density of the crowd.
-     * 
-     * @param estimatedPeople the estimated number of people
-     * @return the density of the crowd
-     */
+    
     public double density(long estimatedPeople) {
         return estimatedPeople / area.m2();
     }
 
     /**
-     * Calculate the density of the crowd.
-     * 
-     * @param probeBatches the probe batches to estimate the density
-     * @return the density of the crowd
-     */
-    public double density(List<ProbeBatch> probeBatches) {
-        return estimatePeople(probeBatches) / area.m2();
-    }
-
-    /**
-     * Calculate the trend of the crowd density based on the previous density
-     * values.
-     * 
-     * @param previousStats the previous density values (at least 5)
-     * @return the trend of the crowd density
+     * Computes the crowd trend by applying linear regression on recent density values.
+     * Requires at least 3 historical points to produce a valid trend.
+     *
+     * @param previousStats list of historical analysis records
+     * @return the classified Trend, or NOT_ENOUGH_VALUES if there are fewer than 3 points
      */
     public Trend calculateTrend(List<AnalysisStats> previousStats) {
         if (previousStats == null || previousStats.size() < 3) {
@@ -162,11 +153,15 @@ public class AnalysisService {
         return getTrend(slope);
     }
 
+    /**
+     * Converts a regression slope into an angle in degrees and maps it to a Trend category.
+     *
+     * @param slope linear regression slope value
+     * @return matching Trend classification
+     */
     private @NonNull Trend getTrend(double slope) {
-        // Convert the slope to an angle in degrees [-90, 90]
         double angleInDegrees = Math.toDegrees(Math.atan(slope));
         Trend trend;
-        // Classify the trend based on the calculated angle
         if (angleInDegrees > trend_highly) {
             trend = Trend.HIGHLY_RISING;
         } else if (angleInDegrees > trend_stable) {
@@ -181,6 +176,12 @@ public class AnalysisService {
         return trend;
     }
 
+    /**
+     * Calculates the slope of the line that best fits the density values using ordinary least squares.
+     *
+     * @param statsList list of recent analysis statistics
+     * @return the computed slope value
+     */
     private static double getSlope(List<AnalysisStats> statsList) {
         int n = statsList.size();
         double sumX = 0;
