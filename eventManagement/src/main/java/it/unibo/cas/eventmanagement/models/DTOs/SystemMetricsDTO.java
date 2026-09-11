@@ -1,6 +1,5 @@
 package it.unibo.cas.eventmanagement.models.DTOs;
 
-import it.unibo.cas.eventmanagement.models.enums.OrchestrationPolicy;
 import java.util.Map;
 
 public record SystemMetricsDTO(

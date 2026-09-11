@@ -1,10 +1,8 @@
 package it.unibo.cas.eventmanagement.controllers;
 
 import it.unibo.cas.eventmanagement.models.DTOs.AreaDTO;
-import it.unibo.cas.eventmanagement.models.entities.AnalysisStats;
 import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.orchestration.KubernetesOrchestrationService;
-import it.unibo.cas.eventmanagement.services.AnalysisService;
 import it.unibo.cas.eventmanagement.services.AreaService;
 import it.unibo.cas.eventmanagement.services.NodeService;
 
@@ -18,19 +16,29 @@ import org.springframework.web.bind.annotation.*;
 import io.fabric8.kubernetes.client.ResourceNotFoundException;
 import java.util.List;
 
+
+/**
+ * REST Controller managing monitored areas and coordinating their Kubernetes analysis workloads.
+ *
+ * Responsibilities:
+ * - Provides CRUD endpoints for event areas stored in PostGIS.
+ * - Bridges database state with cluster orchestration: creating an area automatically calculates
+ *   the closest Edge node and spawns a dedicated analysis pod on Kubernetes.
+ * - Deleting an area tears down the corresponding Kubernetes deployment to release resources.
+ * - Exposes area metadata endpoints (capacity and square meters) used by analysis pods
+ *   during their startup phase to initialize density calculations.
+ */
 @RestController
 @RequestMapping("api/event/")
 public class AreaController {
     private static final Logger logger = LoggerFactory.getLogger(AreaController.class);
 
     @Autowired
-    private AnalysisService analysisService;
-
-    @Autowired
     private NodeService nodeService;
 
     @Autowired
     private AreaService areaService;
+    
     @Autowired
     private KubernetesOrchestrationService kubernetesOrchestrationService;
 

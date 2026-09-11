@@ -13,6 +13,17 @@ import it.unibo.cas.eventmanagement.models.entities.Node;
 import it.unibo.cas.eventmanagement.orchestration.KubernetesOrchestrationService;
 import it.unibo.cas.eventmanagement.models.DTOs.NodeDistanceDTO;
 
+
+/**
+ * REST controller that manages infrastructure nodes and chaos simulation actions.
+ *
+ * Responsibilities:
+ * - Exposes HTTP endpoints for discovering and updating Edge and Cloud nodes in the cluster.
+ * - Provides topological information and PostGIS spatial distances between nodes and event areas.
+ * - Exposes real-time pod allocations and node CPU usage metrics to the web dashboard.
+ * - Provides simulation endpoints to test load migration and fault tolerance by running
+ *   CPU stress tests or cordoning nodes.
+ */
 @RestController
 @RequestMapping("/api/nodes")
 public class NodeController {
@@ -76,11 +87,6 @@ public class NodeController {
         return ResponseEntity.ok(dto);
     }
 
-    /**
-     * Aggiorna le coordinate GPS (Lat, Lon) e il brokerUrl del nodo logico.
-     * Usato dalla Dashboard quando l'utente posiziona il nodo sulla mappa.
-     * Non viene usato dall'utente per aggiornare il broker
-     */
     @PutMapping("/{id}")
     public ResponseEntity<NodeDTO> updateNode(@PathVariable String id, @RequestBody NodeDTO nodeDTO) {
         NodeDTO updated = nodeService.updateNodeLocationAndBroker(id, nodeDTO);

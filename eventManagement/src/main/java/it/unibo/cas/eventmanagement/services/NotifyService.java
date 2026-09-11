@@ -1,11 +1,9 @@
 package it.unibo.cas.eventmanagement.services;
 
-import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
 import it.unibo.cas.eventmanagement.models.DTOs.NotifyDTO;
 import it.unibo.cas.eventmanagement.models.entities.Alert;
 import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.entities.Notification;
-import it.unibo.cas.eventmanagement.models.enums.AreaType;
 import it.unibo.cas.eventmanagement.models.enums.UserType;
 import it.unibo.cas.eventmanagement.models.enums.Priority;
 import it.unibo.cas.eventmanagement.repositories.NotificationRepository;

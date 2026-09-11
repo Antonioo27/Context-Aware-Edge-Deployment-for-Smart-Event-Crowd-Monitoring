@@ -9,7 +9,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-
+/**
+ * REST controller that manages the lifecycle of the overall monitored event.
+ *
+ * Responsibilities:
+ * - Exposes HTTP endpoints for creating, reading, and deleting the root event entity.
+ * - Serves as the starting point for frontend dashboards before configuring specific areas or nodes.
+ */
 @RestController
 @RequestMapping("api/event")
 public class EventController {

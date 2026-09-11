@@ -4,6 +4,16 @@ import it.unibo.cas.eventmanagement.models.enums.OrchestrationPolicy;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+
+/**
+ * REST controller that manages the active pod orchestration policy at runtime.
+ *
+ * Responsibilities:
+ * - Exposes endpoints used by the dashboard to read and update the scheduling strategy
+ *   (e.g., CONTEXT_AWARE, CLOUD_ONLY, or STATIC).
+ * - Holds the active policy state in memory so the periodic orchestrator loop
+ *   (OrchestratorControlLoop) can dynamically adapt placement decisions.
+ */
 @RestController
 @RequestMapping("api/orchestration")
 public class OrchestrationController {

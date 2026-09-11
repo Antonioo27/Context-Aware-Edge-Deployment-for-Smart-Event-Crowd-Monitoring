@@ -8,6 +8,13 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * REST controller for managing pod migration history.
+ *
+ * Responsibilities:
+ * - Exposes HTTP endpoints consumed by the frontend dashboard to show container migrations between Edge and Cloud nodes.
+ * - Provides historical records of orchestration actions such as failover events, CPU overload avoidance, and cost optimizations.
+ */
 @RestController
 @RequestMapping("/api/orchestration/migrations")
 @RequiredArgsConstructor
@@ -26,10 +33,6 @@ public class MigrationController {
         return ResponseEntity.ok(migrationService.getMigrationsByArea(areaId));
     }
 
-    /**
-     * Elimina tutte le migrazioni (Reset storico).
-     * Endpoint: DELETE /api/orchestration/migrations
-     */
     @DeleteMapping
     public ResponseEntity<String> deleteAllMigrations() {
         migrationService.deleteAllMigrations();

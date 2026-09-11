@@ -10,6 +10,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * REST controller for receiving and processing alerts in the Event Management backend.
+ * Architectural Role:
+ * - Slow-Path Ingestion: Serves as the centralized HTTP REST entry point for automated alerts
+ *   sent by eventAnalysis pods.
+ * - Manual Alert Handling: Receives emergency notifications submitted manually by operators
+ *   via the web dashboard map with geographic coordinates.
+ * - Persistence and Propagation: Coordinates with AlertService to store records in the database
+ *   and invokes NotifyService to broadcast alerts to connected operator interfaces.
+ */
 @Slf4j
 @RestController
 @RequestMapping("api/event/area")

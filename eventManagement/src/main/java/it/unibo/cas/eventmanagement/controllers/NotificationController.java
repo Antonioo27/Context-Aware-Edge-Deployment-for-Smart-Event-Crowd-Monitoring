@@ -11,6 +11,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
 
+/**
+ * REST controller that handles role-based notifications for event operators.
+ *
+ * Responsibilities:
+ * - Exposes HTTP endpoints to query notifications suited to specific user roles.
+ */
 @RestController
 @RequestMapping("api/event")
 public class NotificationController {
