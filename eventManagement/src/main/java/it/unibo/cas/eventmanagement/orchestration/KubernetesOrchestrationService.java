@@ -22,6 +22,14 @@ import java.util.Objects;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
 
+/**
+ * Service that interacts directly with the Kubernetes cluster API using Fabric8.
+ *
+ * Responsibilities:
+ * - Creates, deletes, and migrates event-analysis worker pods by dynamically modifying deployment specs.
+ * - Queries cluster health, node schedulability (cordoned status), and real-time CPU usage.
+ * - Manages chaos experiments by scheduling CPU stress pods and toggling node cordoning.
+ */
 @Service
 public class KubernetesOrchestrationService {
 
@@ -30,6 +38,13 @@ public class KubernetesOrchestrationService {
     @Autowired
     private KubernetesClient client;
 
+    /**
+     * Deploys the analysis service deployment for a specific area using a YAML template.
+     *
+     * @param area_name name of the event area to monitor
+     * @param targetNodeId identifier of the node where the pod should run (defaults to node-cloud)
+     * @throws IOException if the template file cannot be read
+     */
     public void deployAnalysisForArea(String area_name, String targetNodeId) throws IOException {
         String template = new String(
                 Objects.requireNonNull(getClass().getResourceAsStream("/templates/analysis-template.yaml"))
@@ -43,18 +58,21 @@ public class KubernetesOrchestrationService {
                 .replace("[TARGET_NODE_ID]", nodeToDeploy);
 
         InputStream inputStream = new ByteArrayInputStream(finalYaml.getBytes());
-        // Metodo moderno e raccomandato da Fabric8
         client.load(inputStream)
                 .forceConflicts()
                 .serverSideApply();
     }
 
+    /**
+     * Removes all event-analysis deployments from the current namespace.
+     *
+     * @return true if deployments were successfully removed, false otherwise
+     */
     public Boolean removeAllDeployAnalysis() {
         try {
             String currentNamespace = client.getNamespace();
             String deploymentName = "event-analysis";
 
-            // remove all deployment with label "event-analysis"
             List<StatusDetails> result = client.apps().deployments()
                     .inNamespace(currentNamespace)
                     .withLabel("app", deploymentName)
@@ -65,7 +83,7 @@ public class KubernetesOrchestrationService {
             throw new RuntimeException("Error during the deletion of the deployment: " + e.getMessage(), e);
         }
     }
-
+    
     public Boolean removeAnalysisForArea(String area_name) {
         try {
             String currentNamespace = client.getNamespace();
@@ -86,6 +104,12 @@ public class KubernetesOrchestrationService {
         return area_name.toLowerCase().replaceAll("[^a-z0-9-]", "-");
     }
 
+    /**
+     * Returns a map showing which nodes are currently healthy and schedulable.
+     * A node is considered operational only if condition Ready is True and unschedulable is not set.
+     *
+     * @return map of node identifiers and their operational readiness status
+     */
     public Map<String, Boolean> getNodeStatusMap() {
         Map<String, Boolean> statusMap = new HashMap<>();
 
@@ -100,7 +124,6 @@ public class KubernetesOrchestrationService {
                 boolean isReady = node.getStatus().getConditions().stream()
                         .anyMatch(cond -> "Ready".equals(cond.getType()) && "True".equals(cond.getStatus()));
 
-                // 2. Verifica se il nodo è stato cordonato (unschedulable = true)
                 boolean isUnschedulable = node.getSpec() != null &&
                         Boolean.TRUE.equals(node.getSpec().getUnschedulable());
 
@@ -114,6 +137,12 @@ public class KubernetesOrchestrationService {
         return statusMap;
     }
 
+    /**
+     * Reads the node-id label from the deployment nodeSelector to determine where an area pod is scheduled.
+     *
+     * @param areaName name of the area to inspect
+     * @return node identifier hosting the pod, or node-cloud as fallback
+     */
     public String getCurrentNodeForArea(String areaName) {
         String sanitizedAreaId = getSanitizedId(areaName);
         String deploymentName = "event-analysis-" + sanitizedAreaId;
@@ -135,18 +164,24 @@ public class KubernetesOrchestrationService {
                 }
             }
         } catch (Exception e) {
-
+            logger.error(" [ORCHESTRATOR] Errore durante il recupero del nodo corrente per l'area '{}': {}", areaName, e.getMessage());
         }
-        return "node-cloud"; // Fallback
+        return "node-cloud"; 
     }
 
+    /**
+     * Migrates an analysis pod to a different compute node by patching the nodeSelector in its deployment.
+     *
+     * @param areaName name of the area to migrate
+     * @param targetNodeId identifier of the destination node
+     * @return true if the patch succeeded, false otherwise
+     */
     public boolean migratePodToNode(String areaName, String targetNodeId) {
         String sanitizedAreaId = getSanitizedId(areaName);
         String deploymentName = "event-analysis-" + sanitizedAreaId;
         String namespace = client.getNamespace();
 
         try {
-            // Patch JSON: modify only the node-id in the nodeSelector
             String patchJson = String.format(
                     "{\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"node-id\":\"%s\"}}}}}",
                     targetNodeId);
@@ -167,7 +202,9 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Return a nodeId -> usagePercentageCPU map
+     * Retrieves the current CPU utilization percentage for every node from the Kubernetes Metrics Server.
+     *
+     * @return map of node identifiers and their calculated CPU usage percentages
      */
     public Map<String, Double> getNodeCpuUsagePercentageMap() {
         Map<String, Double> cpuMap = new HashMap<>();
@@ -202,7 +239,9 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Return the { areaName -> currentNodeId } map 
+     * Inspects all active analysis deployments to build a mapping from area names to current host nodes.
+     *
+     * @return map linking each area name to the node identifier running its analysis pod.
      */
     public Map<String, String> getCurrentAssignments() {
         Map<String, String> assignments = new HashMap<>();
@@ -235,7 +274,9 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * How many analysis pods has every node
+     * Counts how many analysis worker pods are currently running on each node.
+     *
+     * @return map with node identifiers and the count of assigned analysis pods
      */
     public Map<String, Integer> getNodePodCountMap() {
         Map<String, Integer> podCountMap = new HashMap<>();
@@ -253,14 +294,17 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Start a stress-ng Pod on the targetNode by the nodeSelector.
+     * Launches a stress-ng pod on a target node to simulate high CPU utilization for a fixed duration.
+     *
+     * @param nodeId target node identifier where the stress workload should run
+     * @param durationSeconds duration of the stress test in seconds
+     * @return true if the stress pod was created successfully, false otherwise
      */
     public boolean startNodeCpuStress(String nodeId, int durationSeconds) {
         String podName = "cpu-stress-" + nodeId;
         String namespace = "default";
 
         try {
-            // Elimina eventuale pod precedente con lo stesso nome
             client.pods().inNamespace(namespace).withName(podName).delete();
 
             Pod stressPod = new PodBuilder()
@@ -291,7 +335,10 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Interrupt the stress pod
+     * Terminates and removes an active stress-ng pod from the cluster.
+     *
+     * @param nodeId identifier of the node running the stress test
+     * @return true if the stress pod was deleted, false otherwise
      */
     public boolean stopNodeCpuStress(String nodeId) {
         String podName = "cpu-stress-" + nodeId;
@@ -305,14 +352,12 @@ public class KubernetesOrchestrationService {
         }
     }
 
-    public boolean isNodeUnderStress(String nodeId) {
-        String podName = "cpu-stress-" + nodeId;
-        Pod pod = client.pods().inNamespace("default").withName(podName).get();
-        return pod != null && "Running".equalsIgnoreCase(pod.getStatus().getPhase());
-    }
-
     /**
-     * Set the state of cordon or uncordon of a node 
+     * Sets or removes the unschedulable flag on a Kubernetes node (cordon/uncordon).
+     *
+     * @param nodeId identifier of the node to update
+     * @param cordoned true to make the node unschedulable, false to restore scheduling
+     * @return true if the node patch succeeded, false otherwise
      */
     public boolean setNodeCordon(String nodeId, boolean cordoned) {
         try {
@@ -324,14 +369,13 @@ public class KubernetesOrchestrationService {
                 String k8sName = node.getMetadata() != null ? node.getMetadata().getName() : null;
 
                 if (nodeId.equals(labelNodeId) || nodeId.equals(k8sName)) {
-                    // Patch mirata sul solo campo unschedulable di spec
                     String patchJson = String.format("{\"spec\":{\"unschedulable\":%b}}", cordoned);
 
                     client.nodes()
                             .withName(k8sName)
                             .patch(patchJson);
 
-                    logger.info("🔌 [NODE CORDON] Nodo '{}' (K8s: '{}') impostato a unschedulable={}", nodeId, k8sName, cordoned);
+                    logger.info("[NODE CORDON] Nodo '{}' (K8s: '{}') impostato a unschedulable={}", nodeId, k8sName, cordoned);
                     return true;
                 }
             }
@@ -344,8 +388,9 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Return the list of id for every node who has a stress pod
-     * 
+     * Collects all node identifiers that are running active stress-ng pods[cite: 1].
+     *
+     * @return list of node identifiers currently under CPU stress[cite: 1]
      */
     public List<String> getStressedNodeIds() {
         List<String> stressed = new ArrayList<>();
@@ -366,13 +411,16 @@ public class KubernetesOrchestrationService {
         return stressed;
     }
 
-
+    /**
+     * Collects all node identifiers that are currently marked as unschedulable (cordoned).
+     *
+     * @return list of cordoned node identifiers
+     */
     public List<String> getCordonedNodeIds() {
         List<String> cordoned = new ArrayList<>();
         try {
             List<Node> k8sNodes = client.nodes().list().getItems();
             for (Node n : k8sNodes) {
-                // Se il nodo non è mai stato cordonato, getUnschedulable() restituisce null
                 if (n.getSpec() != null && Boolean.TRUE.equals(n.getSpec().getUnschedulable())) {
                     String labelNodeId = (n.getMetadata() != null && n.getMetadata().getLabels() != null)
                             ? n.getMetadata().getLabels().get("node-id")

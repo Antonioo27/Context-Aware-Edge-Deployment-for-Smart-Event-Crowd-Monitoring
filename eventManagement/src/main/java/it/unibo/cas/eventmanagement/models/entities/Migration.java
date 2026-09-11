@@ -34,7 +34,7 @@ public class Migration {
     private Double newCost;
 
     @Column(nullable = false, length = 500)
-    private String reason; // Es: "Cost reduction from 93.82 to 64.84 (-30.8%)", "Failover: Node down", "Failback: Node stable for 60s"
+    private String reason; 
 
     @Column(nullable = false)
     private Boolean success;

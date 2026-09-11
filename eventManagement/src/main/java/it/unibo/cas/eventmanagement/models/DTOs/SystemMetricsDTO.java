@@ -4,8 +4,8 @@ import java.util.Map;
 
 public record SystemMetricsDTO(
     long totalRequestsProcessed,
-    double instantAverageLatencyMs,     // Slow-Path: L_totale per sincronizzazione DB
-    double instantFastPathLatencyMs,    // Fast-Path: Reattività immediata allarmi
+    double instantAverageLatencyMs,    
+    double instantFastPathLatencyMs,   
     long totalAlertsCount,
     Map<String, Double> areaLatencies,
     Map<String, Double> areaFastPathLatencies,

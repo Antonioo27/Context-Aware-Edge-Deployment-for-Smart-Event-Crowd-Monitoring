@@ -1,7 +1,5 @@
 package it.unibo.cas.eventmanagement.models.entities;
 
-
-import it.unibo.cas.eventmanagement.models.DTOs.AlertDTO;
 import it.unibo.cas.eventmanagement.models.enums.AlertType;
 import jakarta.persistence.*;
 import lombok.*;

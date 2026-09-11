@@ -22,12 +22,25 @@ import it.unibo.cas.eventmanagement.repositories.AreaRepository;
 import it.unibo.cas.eventmanagement.services.MigrationService;
 import it.unibo.cas.eventmanagement.services.NodeService;
 
+/**
+ * Architectural Role:
+ * Central orchestration control loop for the event monitoring platform.
+ * It implements a periodic Monitor, Analyze, Plan, Execute control cycle that balances
+ * event analysis worker pods across Edge and Cloud compute nodes.
+ *
+ * Operational Characteristics:
+ * - Periodic Scheduling: Executes every 10 seconds to observe node health, CPU loads, and area states.
+ * - Multi-Policy Support: Supports CLOUD_ONLY, STATIC, and CONTEXT_AWARE policies.
+ * - Fault Tolerance: Instantly relocates pods away from cordoned nodes, bypassing hysteresis.
+ * - Thrashing Prevention: Enforces an anti-flapping hysteresis threshold and a per-area migration cooldown.
+ * - Priority-Based Load Shedding: Evacuates lower-priority workloads first during CPU saturation
+ *   to preserve local low-latency Edge resources for high-risk critical areas.
+ */
 @Component
 public class OrchestratorControlLoop {
     
     private static final Logger logger = LoggerFactory.getLogger(OrchestratorControlLoop.class);
 
-    // Soglia di isteresi
     private static final double ISTERESI_THRESHOLD = 20.0;
 
     @Autowired
@@ -50,8 +63,15 @@ public class OrchestratorControlLoop {
 
     // Periodo di non migrazione: un'area non può rimigrare prima di 60 secondi
     private static final long MIGRATION_COOLDOWN_MS = 60_000;
+
+    private static double CPU_OVERLOAD_THRESHOLD = 75.0;
+
     private final Map<String, Long> lastMigrationTimestamps = new HashMap<>();
 
+    /**
+     * Periodic control loop tick triggered every 10 seconds.
+     * Evaluates active areas and delegates orchestration decisions to the active policy handler.
+     */
     @Scheduled(fixedRate = 10000)
     public void tick() {
         OrchestrationPolicy currentPolicy = orchestrationController.getCurrentPolicyInternal();
@@ -63,26 +83,27 @@ public class OrchestratorControlLoop {
 
         logger.info(" [CONTROL LOOP] Tick avviato. Politica attiva: {}", currentPolicy);
 
-        // Politica CLOUD_ONLY
         if (currentPolicy == OrchestrationPolicy.CLOUD_ONLY) {
             handleCloudOnlyPolicy(areas);
             return;
         }
 
-        // Politica CONTEXT_AWARE
         if (currentPolicy == OrchestrationPolicy.CONTEXT_AWARE) {
             handleContextAwarePolicy(areas);
             return;
         }
 
-        // Politica STATIC
         if (currentPolicy == OrchestrationPolicy.STATIC) {
             handleStaticPolicy(areas);
         }
 
     }
 
-    // Politica Cloud-Only: sposta tutti i nodi su cloud
+    /**
+     * Executes the cloud-only policy by migrating all analysis worker pods to the central cloud node.
+     *
+     * @param areas list of monitored event areas to inspect and migrate
+     */
     private void handleCloudOnlyPolicy(List<Area> areas) {
         for (Area area : areas) {
             String currentNode = kubernetesOrchestrationService.getCurrentNodeForArea(area.getName());
@@ -106,7 +127,12 @@ public class OrchestratorControlLoop {
         }
     }
 
-    // Politica Static
+    /**
+     * Executes the static policy by assigning each area to its geographically nearest available node.
+     * Uses PostGIS distance queries to locate the closest Edge node and provides a cloud fallback.
+     *
+     * @param areas list of monitored event areas to place
+     */
     private void handleStaticPolicy(List<Area> areas) {
         Map<String, Boolean> nodeHealthMap = kubernetesOrchestrationService.getNodeStatusMap();
         List<String> availableNodes = new ArrayList<>();
@@ -127,14 +153,12 @@ public class OrchestratorControlLoop {
         for (Area area : areas) {
             String currentNode = kubernetesOrchestrationService.getCurrentNodeForArea(area.getName());
             
-            // Trova il nodo naturale migliore per vicinanza geografica (L_ingresso)
             String targetStaticNode = findStaticBestNode(area, availableNodes);
 
             if (targetStaticNode == null) {
                 targetStaticNode = "node-cloud";
             }
 
-            // Se non è sul suo nodo statico ottimale (es. all'avvio o dopo un ripristino guasto), spostalo
             if (!targetStaticNode.equals(currentNode)) {
                 logger.info(" [STATIC-POLICY] Assegnazione statica Area '{}': {} -> {}",
                         area.getName(), currentNode, targetStaticNode);
@@ -158,11 +182,15 @@ public class OrchestratorControlLoop {
     }
 
     /**
-     * Politica Context-Aware: valuta stato nodi, calcola matrice costi
-     * gestisce guasti e sposta i Pod solo se superano la soglia di isteresi
+     * Executes the context-aware placement algorithm.
+     * Observes cluster readiness and CPU load, sorts areas by priority to enable selective load shedding,
+     * checks migration cooldown timers, evaluates cost functions across nodes, and migrates pods
+     * when savings exceed the hysteresis margin or when an emergency failover is required.
+     *
+     * @param areas list of monitored event areas to evaluate
      */
     private void handleContextAwarePolicy(List<Area> areas) {
-        // OBSERVE
+        
         Map<String, Boolean> nodeHealthMap = kubernetesOrchestrationService.getNodeStatusMap();
         List<String> availableNodes = new ArrayList<>();
 
@@ -179,7 +207,6 @@ public class OrchestratorControlLoop {
             return;
         }
 
-        // Mappa del carico attuale (quanti Pod girano su ciascun nodo)
         Map<String, Integer> nodePodCount = new HashMap<>();
         availableNodes.forEach(node -> nodePodCount.put(node, 0));
 
@@ -197,32 +224,22 @@ public class OrchestratorControlLoop {
             }
         }
 
-        // Ordinamento per priorità statica crescente e poi per criticità dinamica crescente:
-        // le aree meno critiche vengono valutate per prime per essere evacuate per prime
         List<Area> sortedAreas = new ArrayList<>(areas);
         sortedAreas.sort(Comparator.comparingInt((Area a) -> Priority.getRankOrDefault(a.getPriority()))
                                    .thenComparingInt(a -> State.getRankOrDefault(a.getState())));
 
-        // Lettura metriche CPU reali dei nodi
         Map<String, Double> nodeCpuMap = kubernetesOrchestrationService.getNodeCpuUsagePercentageMap();
 
-        // Se un nodo ha CPU > 75%, viene penalizzato fortemente per i nuovi pod
-        // e i pod meno critici già presenti vengono spinti verso la migrazione
-        double CPU_OVERLOAD_THRESHOLD = 75.0;
-
-        // Insieme dei nodi che hanno già evacuato 1 Pod in questo tick
-        Set<String> nodesShedInThisTick = new HashSet<>();
+        Set<String> nodesEvacuatedInThisTick = new HashSet<>();
 
         long now = System.currentTimeMillis();
 
-        // EVALUATE and DECIDE per ogni area
         for (Area area : sortedAreas) {
             String currentNode = currentAssignments.get(area.getName());   
             boolean currentNodeIsHealthy = Boolean.TRUE.equals(nodeHealthMap.get(currentNode));
             Double currentCpu = nodeCpuMap.getOrDefault(currentNode, 0.0);
             boolean isCurrentNodeOverloaded = currentCpu > CPU_OVERLOAD_THRESHOLD;
             
-            // COOLDOWN CHECK: se l'area è sana ed è stata migrata di recente, non toccarla
             if (currentNodeIsHealthy) {
                 long lastMigrated = lastMigrationTimestamps.getOrDefault(area.getName(), 0L);
                 if (now - lastMigrated < MIGRATION_COOLDOWN_MS) {
@@ -232,13 +249,11 @@ public class OrchestratorControlLoop {
                 }
             }
 
-            // Stato attuale dell'area
             State currentState = area.getState() != null ? area.getState() : State.NONE;
 
-            // Se un nodo ha già evacuato un Pod in questo cilo non applichiamo la penalità agli altri Pod
-            boolean applyOverloadPenaltyOnCurrent = isCurrentNodeOverloaded && !nodesShedInThisTick.contains(currentNode);
+            boolean applyOverloadPenaltyOnCurrent = isCurrentNodeOverloaded && !nodesEvacuatedInThisTick.contains(currentNode);
 
-            if (isCurrentNodeOverloaded && !nodesShedInThisTick.contains(currentNode)) {
+            if (isCurrentNodeOverloaded && !nodesEvacuatedInThisTick.contains(currentNode)) {
                 logger.warn(" [OVERLOAD] Il nodo '{}' ha un utilizzo CPU del {}% (Soglia: {}%)!",
                         currentNode, String.format("%.1f", currentCpu), CPU_OVERLOAD_THRESHOLD);
             }
@@ -250,7 +265,6 @@ public class OrchestratorControlLoop {
             String bestNode = currentNode;
             double currentCost = Double.MAX_VALUE;
 
-            // Se il nodo attuale è sano, calcoliamo il suo costo attuale
             if (currentNodeIsHealthy) {
                 double lIngressoCurrent = nodeService.getIngressLatency(area, currentNode);
                 int podsOnCurrentNode = Math.max(0, nodePodCount.getOrDefault(currentNode, 1) - 1);
@@ -263,7 +277,6 @@ public class OrchestratorControlLoop {
             }
             double minCost = currentCost;
 
-            // Cerchiamo tra tutti i nodi candidati sani
             for (String candidateNode : availableNodes) {
                 if (candidateNode.equals(currentNode) && currentNodeIsHealthy) {
                     continue;
@@ -281,7 +294,6 @@ public class OrchestratorControlLoop {
                         currentState, isCandidateOverloaded, candidateHasCritical
                 );
 
-                // Regola di decisione con Isteresi (o Failover forzato se il nodo attuale è morto)
                 if (!currentNodeIsHealthy || candidateCost < (currentCost - ISTERESI_THRESHOLD)) {
                     if (candidateCost < minCost) {
                         minCost = candidateCost;
@@ -290,7 +302,6 @@ public class OrchestratorControlLoop {
                 }
             }
 
-            // ACT: Esegui la migrazione se il nodo migliore è diverso da quello attuale
             if (!bestNode.equals(currentNode)) {
                 logger.info(" [ORCHESTRATOR] Migrazione decisa per Area '{}': {} -> {} (Costo attuale: {}, Nuovo costo: {})",
                         area.getName(), currentNode, bestNode, String.format("%.2f", currentCost), String.format("%.2f", minCost));
@@ -324,9 +335,7 @@ public class OrchestratorControlLoop {
 
                 if (success) {
 
-                    // Salva il momento dell'avvenuta migrazione per attivare il cooldown
                     lastMigrationTimestamps.put(area.getName(), now);
-                    // Aggiorna bilanciamento locale
                     if (nodePodCount.containsKey(currentNode)) {
                         nodePodCount.put(currentNode, nodePodCount.get(currentNode) - 1);
                     }
@@ -334,9 +343,8 @@ public class OrchestratorControlLoop {
                         nodePodCount.put(bestNode, nodePodCount.get(bestNode) + 1);
                     }
 
-                    // Se la migrazione è dovuta a sovraccarico, blocchiamo ulteriori spostamenti da questo nodo per questo tick
                     if (isCurrentNodeOverloaded) {
-                        nodesShedInThisTick.add(currentNode);
+                        nodesEvacuatedInThisTick.add(currentNode);
                     }
                 }
             }
@@ -345,8 +353,12 @@ public class OrchestratorControlLoop {
     }
 
     /**
-     * Individua il nodo con la minore latenza di ingresso geografica (PostGIS)
-     * senza considerare folla, alert, CPU o carichi di altri Pod.
+     * Identifies the node with the lowest geographic ingress latency for a given area.
+     * Evaluates physical distances using PostGIS coordinates without considering crowd dynamics or CPU load.
+     *
+     * @param area the monitored area entity
+     * @param availableNodes list of healthy candidate node identifiers
+     * @return identifier of the closest node, or null if no nodes are available
      */
     private String findStaticBestNode(Area area, List<String> availableNodes) {
         String bestNode = null;

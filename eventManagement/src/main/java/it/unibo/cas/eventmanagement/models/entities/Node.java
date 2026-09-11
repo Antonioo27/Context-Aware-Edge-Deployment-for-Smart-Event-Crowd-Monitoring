@@ -14,16 +14,16 @@ import org.locationtech.jts.geom.Point;
 public class Node {
 
     @Id
-    private String id; // es. "node-edge-north", "node-edge-south", "node-cloud"
+    private String id; 
 
     private String name;
 
     @Enumerated(EnumType.STRING)
-    private NodeType type; // EDGE oppure CLOUD
+    private NodeType type; 
 
     @Column(name = "broker_url", nullable = false)
-    private String brokerUrl; // es. "tcp://mosquitto-north:1883"
+    private String brokerUrl; 
 
     @Column(columnDefinition = "geometry(Point, 4326)")
-    private Point location; // Posizione geospaziale del nodo (Lat, Lon)
+    private Point location; 
 }
