@@ -39,7 +39,7 @@ htmlcov/
 Thumbs.db
 
 # --- Secrets / ambiente locale ---
-.env
+event-frontend/.env
 *.local
 
 # --- Documentazione ---
