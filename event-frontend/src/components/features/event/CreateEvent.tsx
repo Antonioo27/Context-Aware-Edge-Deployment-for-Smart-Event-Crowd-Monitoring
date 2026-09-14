@@ -1,3 +1,9 @@
+/**
+ * Event creation view component.
+ * Provides a structured form for initializing a new smart crowd monitoring event
+ * with metadata (name, description, location, and city) before redirecting to the main dashboard.
+ */
+
 import React, { useState } from 'react';
 import type { EventDTO } from '../../../types';
 import { eventApi } from '../../../api/eventApi';
@@ -8,6 +14,12 @@ interface Props {
   onSkipToDashboard: () => void;
 }
 
+/**
+ * Renders the event creation form card and orchestrates submission to the Event Management API.
+ *
+ * @param props Component properties containing navigation callbacks for creation success and dashboard skip.
+ * @returns Rendered JSX form component.
+ */
 const CreateEvent: React.FC<Props> = ({ onEventCreated, onSkipToDashboard }) => {
   const [formData, setFormData] = useState<EventDTO>({
     name: '',
@@ -18,10 +30,20 @@ const CreateEvent: React.FC<Props> = ({ onEventCreated, onSkipToDashboard }) => 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Updates form state dynamically when input fields or textareas change.
+   *
+   * @param e Standard React change event from input or textarea elements.
+   */
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  /**
+   * Submits the event data transfer object to the backend API.
+   *
+   * @param e Standard React form submission event.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -30,7 +52,7 @@ const CreateEvent: React.FC<Props> = ({ onEventCreated, onSkipToDashboard }) => 
       await eventApi.createEvent(formData);
       onEventCreated();
     } catch (err: any) {
-      setError(err.message || 'Errore durante la creazione dell\'evento');
+      setError(err.message || 'Error creating event');
     } finally {
       setLoading(false);
     }

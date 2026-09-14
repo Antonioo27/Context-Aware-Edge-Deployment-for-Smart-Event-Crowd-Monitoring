@@ -1,22 +1,17 @@
 """
-Transporto MQTT Multi-broker del simulatore
-Il buffer è partizionato per area, ogni area ha il suo topic (`event/probes/<area_id>`)
-Il trasporto è MQTT con QoS 1, la publish() fatta da paho non è bloccante, il messaggio viene messo in una coda interna
-e un thread di rete lo spedisce.
+Multi-broker MQTT transport module for the crowd simulator.
 
-La conferma dell'invio (PUBACK) arriva in modo asincrono nella callback, da qui la distinzione
-batch spediti e batch confermati.
+Manages partitioned event buffers per monitoring area and broadcasts batches of Wi-Fi probe requests
+to all discovered edge and cloud Mosquitto brokers with QoS 1 delivery guarantees and delivery tracking.
 """
 
-
 import json
-from logging import config
 import logging
 import threading
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse
- 
+
 import paho.mqtt.client as mqtt
 
 from .config import SimConfig
@@ -25,9 +20,12 @@ from .models import ProbeEvent
 
 logger = logging.getLogger("simulator.transport")
 
+
 class SingleBrokerConnection:
     """
-    Rappresenta una singola connessione MQTT verso un broker specifico 
+    Manages a single asynchronous Paho MQTT v3.1.1 client connection to a specific broker endpoint.
+    Configures automatic reconnection backoffs, in-flight limits, Last Will and Testament status topics,
+    and asynchronous callback hooks for connection and message publication.
     """
 
     def __init__(
@@ -38,15 +36,22 @@ class SingleBrokerConnection:
         on_publish_cb,
         on_disconnect_cb,
     ):
-        
+        """
+        Initializes an isolated MQTT client connection for a specific broker endpoint URL.
+
+        @param broker_url The target MQTT broker URL (e.g., tcp://host:port).
+        @param client_id_prefix Base prefix string used to synthesize a collision-free MQTT client ID.
+        @param config The global simulation configuration instance.
+        @param on_publish_cb Callback triggered upon receiving PUBACK confirmations from this broker.
+        @param on_disconnect_cb Callback triggered when the broker connection drops.
+        """
         self.broker_url = broker_url
-        self.config = config 
+        self.config = config
 
         parsed = urlparse(broker_url if "://" in broker_url else f"tcp://{broker_url}")
         self.host = parsed.hostname or "localhost"
         self.port = parsed.port or 1883
 
-        # ID univoco per evitare conflitti tra connessioni allo stesso simulatore
         client_id = f"{client_id_prefix}-{self.host}-{self.port}"
 
         self.client = mqtt.Client(
@@ -72,13 +77,28 @@ class SingleBrokerConnection:
         self.client.on_publish = self._on_publish_wrapper(on_publish_cb)
 
     def _on_publish_wrapper(self, external_cb):
+        """
+        Creates a wrapper delegating paho on_publish events to the external callback.
+
+        @param external_cb The external callback function accepting (client, userdata, mid).
+        @return Configured callback handler function.
+        """
         def _cb(client, userdata, mid, *args):
             external_cb(client, userdata, mid, *args)
         return _cb
 
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
+        """
+        Handles broker connection acknowledgement, publishing an online simulator presence state upon success.
+
+        @param client The Paho client instance.
+        @param userdata User-defined private data.
+        @param flags Response flags sent by the broker.
+        @param reason_code The connection outcome status code.
+        @param properties MQTT v5 / connection properties (if any).
+        """
         if reason_code == 0:
-            logger.info(f"[Transport] Connesso al broker: {self.host}:{self.port}")
+            logger.info(f"[Transport] Connected to MQTT broker: {self.host}:{self.port}")
             client.publish(
                 f"{self.config.mqtt_topic_prefix}/status/simulator",
                 json.dumps({"state": "online", "broker": self.host}),
@@ -86,22 +106,41 @@ class SingleBrokerConnection:
                 retain=True,
             )
         else:
-            logger.warning(f"[Transport] Connessione fallita a {self.host}:{self.port} con codice {reason_code}")
+            logger.warning(f"[Transport] Connection failed to {self.host}:{self.port} with code {reason_code}")
 
-    def start(self):
+    def start(self) -> None:
+        """
+        Asynchronously initiates connection to the broker and starts the background network loop thread.
+        """
         try:
             self.client.connect_async(self.host, self.port, keepalive=self.config.mqtt_keepalive)
             self.client.loop_start()
         except Exception as e:
-            logger.error(f"[Transport] Errore avvio connessione a {self.broker_url}: {e}")
+            logger.error(f"[Transport] Error initiating connection to {self.broker_url}: {e}")
 
     def is_connected(self) -> bool:
+        """
+        Verifies if the client has an active, established socket connection to the broker.
+
+        @return True if currently connected, False otherwise.
+        """
         return self.client.is_connected()
 
     def publish(self, topic: str, payload: str, qos: int):
+        """
+        Enqueues an MQTT message for asynchronous transmission to the broker.
+
+        @param topic The destination MQTT topic string.
+        @param payload Serialized message payload string.
+        @param qos Quality of Service level (0, 1, or 2).
+        @return Paho MQTTMessageInfo object detailing transmission status and message ID.
+        """
         return self.client.publish(topic, payload, qos=qos, retain=False)
 
-    def close(self):
+    def close(self) -> None:
+        """
+        Publishes a graceful offline shutdown status, disconnects from the broker, and stops the network thread.
+        """
         try:
             self.client.publish(
                 f"{self.config.mqtt_topic_prefix}/status/simulator",
@@ -114,47 +153,50 @@ class SingleBrokerConnection:
         except Exception:
             pass
 
+
 class ProbePublisher:
     """
-    Pubblica i probe sui broker MQTT in BROADCAST (un topic per area).
-    Mantiene l'interfaccia compatibile con SimulationEngine (engine.py).
+    Broadcasts probe batches across a pool of connected MQTT brokers using area-partitioned topics.
+    Maintains per-area memory buffers, batch sequencing numbers, flush timers, and delivery tracking.
     """
 
     def __init__(self, config: SimConfig):
-        
+        """
+        Initializes the publisher with area buffers, sequence counters, and broker connection pools.
+
+        @param config The global simulation configuration instance.
+        """
         self.config = config
         self._area_ids = [a.area_id for a in config.areas if a.monitored]
 
-        # Buffer per ogni area
         self._buffers: dict[str, list[ProbeEvent]] = {a: [] for a in self._area_ids}
-        # Contatore di batch per ogni area
         run_offset = int(time.time())
         self._batch_seq: dict[str, int] = {a: run_offset for a in self._area_ids}
-        # Timer di flush per ogni area
         self._last_flush_sim: dict[str, float] = {a: 0.0 for a in self._area_ids}
 
-        # Tetto del buffer, se il broker resta giù a lungo, scartiamo probe più vecchi
         self._max_buffer_per_area = max(500, config.batch_max_events * 20)
 
-        # Serve un lock per le statistiche
         self._lock = threading.Lock()
-        self._pending_mids: set[int] = set()
+        self._pending_mids: set[tuple] = set()
         self.stats = {
-            "probes_published": 0,   # probe consegnati a paho
-            "probes_requeued": 0,    # publish rifiutata, probe rimasti in buffer
-            "probes_dropped": 0,     # scartati per tetto del buffer
+            "probes_published": 0,
+            "probes_requeued": 0,
+            "probes_dropped": 0,
             "probes_unknown_area": 0,
             "batches_published": 0,
-            "batches_acked": 0,      # PUBACK ricevuti dal broker
+            "batches_acked": 0,
             "reconnects": 0,
         }
 
         self._brokers: list[SingleBrokerConnection] = []
         self._init_broker_pool()
 
-    def _init_broker_pool(self):
+    def _init_broker_pool(self) -> None:
+        """
+        Instantiates SingleBrokerConnection objects for all configured broker URLs in broadcast topology.
+        """
         urls = self.config.broker_urls if self.config.broker_urls else ["tcp://localhost:1883"]
-        logger.info(f"[Transport] Inizializzazione pool broadcast per {len(urls)} broker: {urls}")
+        logger.info(f"[Transport] Initializing broadcast pool for {len(urls)} brokers: {urls}")
 
         for idx, url in enumerate(urls):
             conn = SingleBrokerConnection(
@@ -166,22 +208,30 @@ class ProbePublisher:
             )
             self._brokers.append(conn)
 
-    
-
-    def start(self):
+    def start(self) -> None:
         """
-        Avvia le connessioni ed i thread di rete per ciascun broker
+        Starts network loops and establishes connections for all brokers in the connection pool.
         """
         for b in self._brokers:
             b.start()
 
-    def _on_disconnect(self, client, userdata, *args):
+    def _on_disconnect(self, client, userdata, *args) -> None:
+        """
+        Callback tracking reconnection attempts when a broker connection drops.
+
+        @param client Paho client instance.
+        @param userdata User-defined private data.
+        """
         with self._lock:
             self.stats["reconnects"] += 1
 
-    def _on_publish(self, client, userdata, mid, *args):
+    def _on_publish(self, client, userdata, mid, *args) -> None:
         """
-        PUBACK ricevuto da uno dei broker
+        Callback invoked when a broker sends a PUBACK confirmation for a QoS 1 message.
+
+        @param client Paho client instance acknowledging the message.
+        @param userdata User-defined private data.
+        @param mid The unique message identifier assigned by Paho.
         """
         with self._lock:
             key = (client, mid)
@@ -190,14 +240,20 @@ class ProbePublisher:
                 self.stats["batches_acked"] += 1
 
     def is_connected(self) -> bool:
-        """Ritorna True se almeno UN broker del pool è connesso"""
+        """
+        Checks whether at least one broker in the broadcast pool is currently connected.
+
+        @return True if at least one broker connection is active, False otherwise.
+        """
         return any(b.is_connected() for b in self._brokers)
 
-    # API usata dal motore di simulazione
-
-    def enqueue(self, events: list[ProbeEvent], now: float):
+    def enqueue(self, events: list[ProbeEvent], now: float) -> None:
         """
-        Smista gli eventi nei buffer per area, aree che superano batch_max_events vengono inviate subito.
+        Routes incoming probe events into their respective area buffers, immediately flushing
+        any buffer that reaches or exceeds the configured batch_max_events limit.
+
+        @param events List of new ProbeEvent instances to enqueue.
+        @param now Current simulation timestamp in seconds.
         """
         touched: set[str] = set()
         unknown = 0
@@ -218,31 +274,38 @@ class ProbePublisher:
         for area_id in touched:
             if len(self._buffers[area_id]) >= self.config.batch_max_events:
                 self._flush_area(area_id, now)
-        
-    def flush_if_due(self, now: float):
+
+    def flush_if_due(self, now: float) -> None:
         """
-        Spedisce i buffer per cui è passato batch_max_seconds dall'ultimo invio. Il timer è per area
+        Flushes any area buffers that have exceeded the batch_max_seconds temporal timeout threshold.
+
+        @param now Current simulation timestamp in seconds.
         """
         for area_id, buf in self._buffers.items():
             if buf and (now - self._last_flush_sim[area_id]) >= self.config.batch_max_seconds:
                 self._flush_area(area_id, now)
 
-    def flush(self, now: float | None = None):
+    def flush(self, now: float | None = None) -> None:
         """
-        Forza l'invio di tutti i buffer, indipendentemente dal timer
+        Forces immediate transmission of all pending buffered probe events across all monitored areas.
+
+        @param now Optional current simulation timestamp in seconds.
         """
         for area_id in self._area_ids:
             self._flush_area(area_id, now if now is not None else self._last_flush_sim[area_id])
 
+    def _flush_area(self, area_id: str, now: float) -> None:
+        """
+        Chunks and publishes buffered probe events for a single area to connected brokers.
+        Enforces buffer capacity caps if no brokers are available.
 
-    # Invio
-
-    def _flush_area(self, area_id: str, now: float):
+        @param area_id The monitored area identifier whose buffer should be flushed.
+        @param now Current simulation timestamp in seconds.
+        """
         buf = self._buffers[area_id]
         if not buf:
             return
 
-        # Se nessun broker è connesso, conserviamo i dati nei buffer
         if not self.is_connected():
             self._enforce_buffer_cap(area_id)
             return
@@ -256,19 +319,22 @@ class ProbePublisher:
         self._last_flush_sim[area_id] = now
         self._enforce_buffer_cap(area_id)
 
-    def _publish_batch(self, area_id: str, chunk: list[ProbeEvent]):
-        cfg = self.config
+    def _publish_batch(self, area_id: str, chunk: list[ProbeEvent]) -> bool:
+        """
+        Constructs and transmits an aggregated JSON telemetry batch payload to topic 'event/probes/<area_id>'.
+        Attaches monotonic batch sequence IDs and wall-clock UTC timestamps for transport latency benchmarking.
 
-        # Batch_id progressivo per area, il ricevente può accorgersi di un buco nella sequenza
-        # e quantificare i batch persi.
+        @param area_id The monitored area identifier.
+        @param chunk The list of probe events bundled into this batch.
+        @return True if the batch was accepted by at least one connected broker, False otherwise.
+        """
+        cfg = self.config
         batch_id = self._batch_seq[area_id] + 1
 
         payload = {
             "area_id": area_id,
             "sensor_id": cfg.sensor_for_area(area_id),
             "batch_id": batch_id,
-            # Ora di parete (UTC), NON tempo simulato: serve al ricevente per
-            # misurare la latenza di trasporto contro il proprio orologio.
             "sent_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
             "count": len(chunk),
             "probes": [self._probe_payload(e) for e in chunk],
@@ -301,9 +367,12 @@ class ProbePublisher:
         return True
 
     @staticmethod
-    def _probe_payload(event: ProbeEvent):
+    def _probe_payload(event: ProbeEvent) -> dict:
         """
-        Serializza un probe
+        Serializes an individual probe event for inclusion in the batch JSON payload, omitting redundant area IDs.
+
+        @param event The ProbeEvent to serialize.
+        @return Cleaned dictionary representation of the probe event.
         """
         d = event.to_dict()
         d.pop("area_id", None)
@@ -311,7 +380,9 @@ class ProbePublisher:
 
     def _enforce_buffer_cap(self, area_id: str) -> None:
         """
-        Se il buffer di un'area supera il tetto, scarta i piu' vecchi.
+        Discards the oldest buffered probe events if the buffer size exceeds the max retention cap.
+
+        @param area_id The area identifier to evaluate for memory capping.
         """
         buf = self._buffers[area_id]
         overflow = len(buf) - self._max_buffer_per_area
@@ -320,12 +391,12 @@ class ProbePublisher:
             with self._lock:
                 self.stats["probes_dropped"] += overflow
 
-
-    # Chiusura
-
-    def close(self, timeout: float = 5.0):
+    def close(self, timeout: float = 5.0) -> None:
         """
-        Flush finale, attesa dei PUBACK che devono arrivare, disconnessione pulita
+        Performs a final buffer flush, waits for pending QoS 1 acknowledgements up to timeout,
+        and disconnects all active broker connections cleanly.
+
+        @param timeout Maximum duration in seconds to wait for in-flight PUBACK receipts.
         """
         self.flush()
 
@@ -339,10 +410,11 @@ class ProbePublisher:
         for b in self._brokers:
             b.close()
 
-
     def snapshot_stats(self) -> dict:
         """
-        Copia coerente delle statistiche, piu' lo stato dei buffer.
+        Returns a thread-safe snapshot copy of publisher telemetry statistics, buffer depths, and broker states.
+
+        @return Dictionary detailing published probes, dropped probes, acked batches, and connectivity counts.
         """
         with self._lock:
             s = dict(self.stats)
@@ -352,7 +424,6 @@ class ProbePublisher:
         s["connected_brokers"] = sum(1 for b in self._brokers if b.is_connected())
         s["total_brokers"] = len(self._brokers)
         return s
-
 
 
 GatewayClient = ProbePublisher

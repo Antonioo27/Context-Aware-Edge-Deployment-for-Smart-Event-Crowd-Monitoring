@@ -1,23 +1,28 @@
+/**
+ * Generic polling hook for periodic asynchronous tasks.
+ * Executes a callback at specified millisecond intervals while maintaining the latest callback reference
+ * across re-renders without causing stale closures or resetting active timers.
+ */
+
 import { useEffect, useRef } from 'react';
 
 type Callback = () => void | Promise<void>;
 
 /**
- * Custom hook to poll a given callback function at a specified interval.
- * @param callback The function to call periodically.
- * @param delay The interval delay in milliseconds.
+ * Periodically invokes the provided callback function at the given interval.
+ * Executes the callback immediately on mount before establishing the recurring interval.
+ *
+ * @param callback The function or asynchronous task to invoke periodically.
+ * @param delay The interval delay in milliseconds, or null to disable scheduling.
  */
-export function usePolling(callback: Callback, delay: number | null) {
+export function usePolling(callback: Callback, delay: number | null): void {
   const savedCallback = useRef<Callback | null>(null);
 
-  // Remember the latest callback if it changes.
   useEffect(() => {
     savedCallback.current = callback;
   }, [callback]);
 
-  // Set up the interval.
   useEffect(() => {
-    // Don't schedule if no delay is specified.
     if (delay === null) {
       return;
     }
@@ -28,7 +33,6 @@ export function usePolling(callback: Callback, delay: number | null) {
       }
     };
 
-    // Execute immediately on mount
     tick();
 
     const id = setInterval(tick, delay);

@@ -1,43 +1,58 @@
-// src/hooks/useMqttAlerts.ts
+/**
+ * Real-time MQTT subscriber hook for low-latency emergency alert delivery (Fast-Path).
+ * Bypasses backend REST polling by connecting directly to edge broker WebSockets (port 9001),
+ * listening for instant critical alarms and triggering native browser notifications.
+ */
+
 import { useEffect, useRef } from 'react';
 import mqtt, { type MqttClient } from 'mqtt';
 import type { NodeDTO } from '../types';
 
-export const useMqttAlerts = (nodes: NodeDTO[]) => {
+/**
+ * Triggers a native desktop notification via the Web Notification API when granted,
+ * or falls back to a standard browser alert dialog to notify users of critical crowd thresholds.
+ *
+ * @param areaId The identifier of the monitored area triggering the alert.
+ * @param cause The underlying reason or trend description of the alert.
+ * @param timestamp The ISO timestamp when the alert occurred.
+ */
+function spawnBrowserAlert(areaId: string, cause: string, timestamp: string): void {
+  const timeFormatted = new Date(timestamp).toLocaleTimeString();
+  const title = `CRITICAL ALERT: AREA ${areaId.toUpperCase()}`;
+  const body = `Cause: ${cause}\nTime: ${timeFormatted}`;
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const notification = new Notification(title, {
+      body: body,
+      tag: `alert-${areaId}-${timestamp}`,
+      requireInteraction: true,
+    });
+
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+  } else {
+    window.alert(`${title}\n\n${body}`);
+  }
+}
+
+/**
+ * Establishes and manages WebSocket MQTT client subscriptions to each active cluster node's broker.
+ * Listens for messages on topic 'event/alerts/#' and triggers native browser alerts for instant response,
+ * ensuring all active client connections are gracefully terminated upon component unmount or node changes.
+ *
+ * @param nodes List of cluster nodes providing broker endpoints for WebSocket subscriptions.
+ */
+export const useMqttAlerts = (nodes: NodeDTO[]): void => {
   const clientsRef = useRef<MqttClient[]>([]);
-
-  // Funzione per generare il popup nativo del browser (Web Notification API)
-  const spawnBrowserAlert = (areaId: string, cause: string, timestamp: string) => {
-    const timeFormatted = new Date(timestamp).toLocaleTimeString();
-    const title = `ALLARME CRITICO: AREA ${areaId.toUpperCase()}`;
-    const body = `Causa: ${cause}\nOra: ${timeFormatted}`;
-
-    // 1. Notifica Desktop di sistema
-    if ('Notification' in window && Notification.permission === 'granted') {
-      const notification = new Notification(title, {
-        body: body,
-        tag: `alert-${areaId}-${timestamp}`, // Evita popup identici duplicati
-        requireInteraction: true,            // Rimane visibile finché non viene cliccata
-      });
-
-      notification.onclick = () => {
-        window.focus();
-        notification.close();
-      };
-    } else {
-      // 2. Fallback con window.alert standard
-      window.alert(`${title}\n\n${body}`);
-    }
-  };
 
   useEffect(() => {
     if (!nodes || nodes.length === 0) return;
 
-    // Chiude eventuali socket aperti in precedenza
     clientsRef.current.forEach((client) => client.end(true));
     clientsRef.current = [];
 
-    // Crea un client WebSocket per ciascun broker dei nodi
     nodes.forEach((node) => {
       const ipMatch = node.brokerUrl?.match(/tcp:\/\/([^:]+):/);
       const hostIp = ipMatch ? ipMatch[1] : node.name;
@@ -51,39 +66,32 @@ export const useMqttAlerts = (nodes: NodeDTO[]) => {
         });
 
         client.on('connect', () => {
-          console.log(`[Fast-Path Listener] Connesso a ${node.name} (${wsUrl})`);
           client.subscribe('event/alerts/#', { qos: 1 });
         });
 
         client.on('message', (topic, payload) => {
           try {
             const rawAlert = JSON.parse(payload.toString());
-            
-            // Estrae area dal topic (es. 'event/alerts/stage' -> 'stage') o dal payload
-            const areaId = topic.split('/').pop() || rawAlert.area_id || rawAlert.areaId || 'SCONOSCIUTA';
-            const cause = rawAlert.cause || 'Trend di affollamento critico';
+            const areaId = topic.split('/').pop() || rawAlert.area_id || rawAlert.areaId || 'UNKNOWN';
+            const cause = rawAlert.cause || 'Critical crowd trend detected';
             const ts = rawAlert.ts || new Date().toISOString();
 
-            console.log(`⚡ [FAST-PATH RICEVUTO DA ${node.name}] Area: ${areaId}`);
-
-            // FA SPAWNARE ESCLUSIVAMENTE LA NOTIFICA BROWSER
             spawnBrowserAlert(areaId, cause, ts);
           } catch (e) {
-            console.error('Errore durante il parsing del messaggio MQTT:', e);
+            console.error('Error parsing MQTT message payload:', e);
           }
         });
 
         client.on('error', (err) => {
-          console.warn(`[Fast-Path Listener] Connessione non riuscita per ${node.name}:`, err.message);
+          console.warn(`[Fast-Path Listener] Connection failure for ${node.name}:`, err.message);
         });
 
         clientsRef.current.push(client);
       } catch (err) {
-        console.error(`Impossibile avviare il listener per il nodo ${node.name}:`, err);
+        console.error(`Unable to start MQTT listener for node ${node.name}:`, err);
       }
     });
 
-    // Cleanup: chiusura socket allo smontaggio
     return () => {
       clientsRef.current.forEach((client) => client.end(true));
       clientsRef.current = [];

@@ -1,22 +1,37 @@
+/**
+ * Real-time system performance metrics banner component.
+ * Displays latency benchmarks and workload telemetry across four core key performance indicators:
+ * Fast-Path reaction time (Sensor to Edge WS), Slow-Path persistence latency (Cloud DB sync),
+ * total processed probe batches, and cumulative linear regression alerts.
+ */
+
 import React, { useEffect, useState } from 'react';
 import { metricsApi } from '../../../api/metricsApi';
 import type { SystemMetricsDTO } from '../../../types';
 
+/**
+ * Renders the top metrics bar with periodic 3-second polling to display real-time latency and throughput KPIs.
+ *
+ * @returns Rendered JSX metrics summary row, or null if telemetry data is not yet loaded.
+ */
 export const MetricsSummary: React.FC = () => {
   const [metrics, setMetrics] = useState<SystemMetricsDTO | null>(null);
 
+  /**
+   * Fetches latest system telemetry metrics from the backend API and updates local state.
+   */
   const fetchMetrics = async () => {
     try {
       const data = await metricsApi.getSystemMetrics();
       setMetrics(data);
     } catch (err) {
-      console.error('Errore recupero metriche:', err);
+      console.error('Error fetching system metrics:', err);
     }
   };
 
   useEffect(() => {
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 3000); // Aggiornamento ogni 3s
+    const interval = setInterval(fetchMetrics, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -24,7 +39,6 @@ export const MetricsSummary: React.FC = () => {
 
   return (
     <div className="row g-2 mb-3">
-      {/* Card 1: Fast-Path Reaction Time */}
       <div className="col-md-3">
         <div className="p-2 border rounded bg-white shadow-sm h-100">
           <div className="d-flex justify-content-between align-items-center">
@@ -42,7 +56,6 @@ export const MetricsSummary: React.FC = () => {
         </div>
       </div>
 
-      {/* Card 2: Slow-Path Latency (DB Sync) */}
       <div className="col-md-3">
         <div className="p-2 border rounded bg-white shadow-sm h-100">
           <div className="d-flex justify-content-between align-items-center">
@@ -60,7 +73,6 @@ export const MetricsSummary: React.FC = () => {
         </div>
       </div>
 
-      {/* Card 3: Batch di Probe Ricevuti */}
       <div className="col-md-3">
         <div className="p-2 border rounded bg-white shadow-sm h-100">
           <div className="d-flex justify-content-between align-items-center">
@@ -78,7 +90,6 @@ export const MetricsSummary: React.FC = () => {
         </div>
       </div>
 
-      {/* Card 4: Alert Registrati */}
       <div className="col-md-3">
         <div className="p-2 border rounded bg-white shadow-sm h-100">
           <div className="d-flex justify-content-between align-items-center">

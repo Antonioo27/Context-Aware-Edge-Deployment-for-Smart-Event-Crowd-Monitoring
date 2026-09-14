@@ -1,3 +1,9 @@
+/**
+ * Cluster node placement modal dialog component.
+ * Allows operators to associate discovered Kubernetes cluster nodes (edge or cloud)
+ * with geographic GPS coordinates selected on the monitoring map.
+ */
+
 import React, { useState, useEffect } from 'react';
 import type { NodeDTO } from '../../../types';
 import { Modal } from '../../ui/Modal';
@@ -10,14 +16,18 @@ interface Props {
   onCancel: () => void;
 }
 
+/**
+ * Renders a modal dialog for selecting a Kubernetes worker/edge node and assigning GPS coordinates.
+ * Defaults to selecting the first unpositioned node in the cluster if available.
+ *
+ * @param props Component properties including clicked coordinates, available nodes, and save/cancel callbacks.
+ * @returns Rendered JSX modal dialog element.
+ */
 const NodeFormModal: React.FC<Props> = ({ latitude, longitude, nodes, onSave, onCancel }) => {
-  // Seleziona di default il primo nodo non ancora posizionato (lat = 0, lng = 0)
   const unpositionedNodes = nodes.filter(n => n.latitude === 0 && n.longitude === 0);
   const defaultSelectedId = (unpositionedNodes.length > 0 ? unpositionedNodes[0].id : nodes[0]?.id) || '';
 
   const [selectedNodeId, setSelectedNodeId] = useState<string>(defaultSelectedId);
-
-  // Trova l'oggetto completo del nodo selezionato
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
 
   useEffect(() => {
@@ -26,11 +36,15 @@ const NodeFormModal: React.FC<Props> = ({ latitude, longitude, nodes, onSave, on
     }
   }, [nodes, selectedNodeId]);
 
+  /**
+   * Updates the selected node's geographic coordinates with the newly chosen latitude and longitude.
+   *
+   * @param e Standard React form submission event.
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedNode) return;
 
-    // Ritorna il nodo esistente con le NUOVE coordinate GPS assegnate
     onSave({
       ...selectedNode,
       latitude,
@@ -49,7 +63,6 @@ const NodeFormModal: React.FC<Props> = ({ latitude, longitude, nodes, onSave, on
             </div>
           ) : (
             <>
-              {/* Selezione Nodo da K8s */}
               <div className="mb-3">
                 <label className="form-label fw-bold">Seleziona Nodo K8s da associare:</label>
                 <select
@@ -72,7 +85,6 @@ const NodeFormModal: React.FC<Props> = ({ latitude, longitude, nodes, onSave, on
                 </div>
               </div>
 
-              {/* Dettagli Informativi del Nodo Selezionato (Read-Only) */}
               {selectedNode && (
                 <div className="p-3 bg-light rounded border mb-3">
                   <div className="d-flex justify-content-between align-items-center mb-2">
@@ -94,7 +106,6 @@ const NodeFormModal: React.FC<Props> = ({ latitude, longitude, nodes, onSave, on
                 </div>
               )}
 
-              {/* Coordinate Selezionate sulla Mappa */}
               <div className="row g-2">
                 <div className="col-6">
                   <label className="form-label small fw-bold">Latitudine selezionata</label>

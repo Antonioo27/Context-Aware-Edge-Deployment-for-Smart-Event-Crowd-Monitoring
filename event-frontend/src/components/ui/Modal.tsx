@@ -1,3 +1,9 @@
+/**
+ * Generic modal dialog component for overlay interactions.
+ * Renders a backdrop and centered dialog frame with header, title, close button,
+ * and arbitrary children content.
+ */
+
 import React, { type ReactNode } from 'react';
 
 interface ModalProps {
@@ -6,6 +12,12 @@ interface ModalProps {
   children: ReactNode;
 }
 
+/**
+ * Renders an accessible modal overlay with header title, close dismiss trigger, and slotted content.
+ *
+ * @param props Component properties containing the modal title, close handler, and dialog body content.
+ * @returns Rendered JSX modal dialog elements.
+ */
 export const Modal: React.FC<ModalProps> = ({ title, onClose, children }) => {
   return (
     <>

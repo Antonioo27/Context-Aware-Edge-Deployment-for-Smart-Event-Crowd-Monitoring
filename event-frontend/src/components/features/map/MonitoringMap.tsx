@@ -1,3 +1,10 @@
+/**
+ * Interactive GIS monitoring map component powered by Leaflet and Leaflet-Draw.
+ * Visualizes monitoring areas as color-coded polygons based on crowd alert severity
+ * (NONE, LOW, MEDIUM, HIGH, CRITICAL), renders cluster computing nodes as geographic markers,
+ * and provides vector drawing and editing tools with modifier-key zoom locks.
+ */
+
 import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
@@ -16,6 +23,12 @@ interface MonitoringMapProps {
   onMapClick?: (lat: number, lng: number) => void;
 }
 
+/**
+ * Computes polygon stroke and fill colors based on crowd danger and alert status.
+ *
+ * @param state The operational severity level of the area (LOW, MEDIUM, HIGH, CRITICAL, or NONE).
+ * @returns An object containing the stroke color, fill color, and fill opacity for Leaflet polygons.
+ */
 const getStateColor = (state?: State): { color: string; fillColor: string; fillOpacity: number } => {
   switch (state) {
     case 'LOW':
@@ -28,11 +41,17 @@ const getStateColor = (state?: State): { color: string; fillColor: string; fillO
       return { color: 'red', fillColor: 'red', fillOpacity: 0.6 };
     case 'NONE':
     default:
-      return { color: 'gray', fillColor: 'transparent', fillOpacity: 0 }; // Default transparent
+      return { color: 'gray', fillColor: 'transparent', fillOpacity: 0 };
   }
 };
 
-// Componente per abilitare zoom e pan SOLO tenendo premuto Ctrl/Cmd
+/**
+ * Leaflet helper subcomponent that dynamically enables or disables pan dragging
+ * and scroll-wheel zooming according to the modifier key state.
+ *
+ * @param props Contains the isCtrlPressed boolean flag.
+ * @returns Null since this component only manages Leaflet map handler side effects.
+ */
 const CtrlKeyInteractionHandler: React.FC<{ isCtrlPressed: boolean }> = ({ isCtrlPressed }) => {
   const map = useMap();
 
@@ -49,6 +68,12 @@ const CtrlKeyInteractionHandler: React.FC<{ isCtrlPressed: boolean }> = ({ isCtr
   return null;
 };
 
+/**
+ * Inner map manager component handling Leaflet layers, draw controls, popups, and GIS edit events.
+ *
+ * @param props Map configuration properties and draw event handlers.
+ * @returns Rendered interaction handler element.
+ */
 const MapContent: React.FC<MonitoringMapProps & { isCtrlPressed: boolean }> = ({
   areas,
   nodes,
@@ -65,7 +90,6 @@ const MapContent: React.FC<MonitoringMapProps & { isCtrlPressed: boolean }> = ({
   const drawnItemsRef = useRef(new L.FeatureGroup());
   const drawControlRef = useRef<L.Control.Draw | null>(null);
 
-  // Forza il ricalcolo delle dimensioni quando il contenitore si adatta
   useEffect(() => {
     map.invalidateSize();
   }, [map]);
@@ -175,7 +199,7 @@ const MapContent: React.FC<MonitoringMapProps & { isCtrlPressed: boolean }> = ({
         if (layer.isArea) {
           onAreaDelete(layer.backendId);
         } else if (layer.isNode) {
-          alert("I nodi possono solo essere modificati (spostati), non eliminati.");
+          alert('Nodes can only be edited (moved), not deleted.');
           drawnItemsRef.current.addLayer(layer);
         }
       });
@@ -203,6 +227,13 @@ const MapContent: React.FC<MonitoringMapProps & { isCtrlPressed: boolean }> = ({
   return <CtrlKeyInteractionHandler isCtrlPressed={isCtrlPressed} />;
 };
 
+/**
+ * Root GIS monitoring map component configuring container dimensions, keyboard modifier listeners,
+ * visual pan/zoom status badges, and OpenStreetMap tiles.
+ *
+ * @param props Component properties containing area geometries, node locations, and draw callbacks.
+ * @returns Rendered JSX map container element.
+ */
 const MonitoringMap: React.FC<MonitoringMapProps> = (props) => {
   const [isCtrlPressed, setIsCtrlPressed] = useState<boolean>(false);
 
@@ -223,7 +254,6 @@ const MonitoringMap: React.FC<MonitoringMapProps> = (props) => {
       setIsCtrlPressed(false);
     };
 
-    // Agganciamo gli ascoltatori al browser
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
@@ -245,7 +275,6 @@ const MonitoringMap: React.FC<MonitoringMapProps> = (props) => {
         position: 'relative'
       }}
     >
-      {/* Badge di suggerimento visivo per l'utente */}
       <div 
         className={`position-absolute bottom-0 start-0 m-2 px-2 py-1 rounded small ${isCtrlPressed ? 'bg-success text-white' : 'bg-dark text-white opacity-75'}`}
         style={{ zIndex: 1000, pointerEvents: 'none', fontSize: '0.75rem' }}

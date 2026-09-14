@@ -1,3 +1,10 @@
+/**
+ * Kubernetes infrastructure and pod allocation management panel.
+ * Visualizes cluster nodes (edge and cloud), real-time CPU utilization, hosted analysis pods,
+ * PostGIS geographic ingress latencies, and an audit table of live container migrations.
+ * Also provides chaos engineering simulation triggers (CPU stress-ng injection and cordon/uncordon node draining).
+ */
+
 import React, { useEffect, useState } from 'react';
 import type { NodeDTO, MigrationDTO } from '../../../types';
 import { migrationApi } from '../../../api/migrationApi';
@@ -17,6 +24,12 @@ interface InfrastructurePanelProps {
   onRefreshNeeded?: () => void;
 }
 
+/**
+ * Renders the infrastructure panel with node resource cards, live pod allocations, and the migration audit history.
+ *
+ * @param props Component properties containing cluster nodes and optional refresh callbacks.
+ * @returns Rendered JSX infrastructure panel component.
+ */
 const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefreshNeeded }) => {
   const [migrations, setMigrations] = useState<MigrationDTO[]>([]);
   const [allocations, setAllocations] = useState<Record<string, string[]>>({});
@@ -26,6 +39,10 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
   const [activeStressNodes, setActiveStressNodes] = useState<Set<string>>(new Set());
   const [cordonedNodes, setCordonedNodes] = useState<Set<string>>(new Set());
 
+  /**
+   * Fetches cluster telemetry in parallel: migration records, pod allocations,
+   * CPU utilization, PostGIS distance latencies, and simulation state flags.
+   */
   const fetchInfrastructureData = async () => {
     try {
       const [migs, allocs, cpus, dists, simStatus] = await Promise.all([
@@ -41,16 +58,20 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
       setCpuMetrics(cpus);
       setDistances(dists);
 
-      // Sincronizza lo stato reale da Kubernetes (mantiene la memoria anche dopo F5)
       if (simStatus) {
         setActiveStressNodes(new Set(simStatus.stressedNodes));
         setCordonedNodes(new Set(simStatus.cordonedNodes));
       }
     } catch (e) {
-      console.error('Errore nel recupero dati infrastruttura', e);
+      console.error('Error fetching infrastructure telemetry data:', e);
     }
   };
 
+  /**
+   * Starts or stops synthetic CPU stress testing on a targeted edge node to trigger migration policies.
+   *
+   * @param nodeId The identifier of the node to stress or unstress.
+   */
   const handleToggleStress = async (nodeId: string) => {
     setLoadingNode(nodeId);
     try {
@@ -68,14 +89,18 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
       if (onRefreshNeeded) onRefreshNeeded();
       await fetchInfrastructureData();
     } catch (err) {
-      console.error('Errore esecuzione stress test sul nodo', err);
-      alert(`Impossibile modificare lo stress test sul nodo ${nodeId}`);
+      console.error('Error toggling CPU stress test on node:', err);
+      alert(`Unable to modify CPU stress test on node ${nodeId}`);
     } finally {
       setLoadingNode(null);
     }
   };
 
-  // Gestione Spegnimento / Guasto Nodo (kubectl cordon / uncordon)
+  /**
+   * Toggles cordon status on a cluster node to simulate node failure or planned maintenance draining.
+   *
+   * @param nodeId The identifier of the node to cordon or uncordon.
+   */
   const handleToggleCordon = async (nodeId: string) => {
     setLoadingNode(nodeId);
     const isCurrentlyCordoned = cordonedNodes.has(nodeId);
@@ -93,33 +118,49 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
       if (onRefreshNeeded) onRefreshNeeded();
       await fetchInfrastructureData();
     } catch (err) {
-      console.error('Errore durante cordon/uncordon del nodo', err);
-      alert(`Impossibile modificare lo stato operativo del nodo ${nodeId}`);
+      console.error('Error toggling cordon state on node:', err);
+      alert(`Unable to update operational status of node ${nodeId}`);
     } finally {
       setLoadingNode(null);
     }
   };
+
   useEffect(() => {
     fetchInfrastructureData();
     const interval = setInterval(fetchInfrastructureData, 4000);
     return () => clearInterval(interval);
   }, []);
 
+  /**
+   * Confirms and deletes all recorded migration history records from the audit database.
+   */
   const handleClearMigrations = async () => {
-    if (confirm('Vuoi davvero cancellare lo storico delle migrazioni?')) {
+    if (confirm('Do you really want to clear the migration audit history?')) {
       await migrationApi.deleteAllMigrations();
       fetchInfrastructureData();
     }
   };
 
-  // Helper per estrarre il nome pulito dell'Area dal nome del Pod di K8s
+  /**
+   * Normalizes a Kubernetes analysis pod name into its clean monitoring area identifier
+   * by stripping service prefixes and replica hash suffixes.
+   *
+   * @param podName Raw Kubernetes pod name string.
+   * @returns Cleaned area name string.
+   */
   const extractAreaName = (podName: string): string => {
     return podName
       .replace(/^event-analysis-/, '')
       .replace(/-[a-z0-9]{8,10}-[a-z0-9]{5}$/, '');
   };
 
-  // Helper per recuperare la latenza stimata tra Area e Nodo
+  /**
+   * Retrieves estimated network ingress latency between a pod's assigned area and the hosting node using PostGIS.
+   *
+   * @param podNameOrArea The raw pod name or area name.
+   * @param nodeId The hosting node identifier.
+   * @returns Formatted latency string in milliseconds.
+   */
   const getPodLatency = (podNameOrArea: string, nodeId: string): string => {
     const cleanArea = extractAreaName(podNameOrArea);
     
@@ -136,7 +177,13 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
     return `${entry.estimatedIngressLatencyMs.toFixed(1)} ms`;
   };
 
-  const getCpuBadgeColor = (cpuPercent: number) => {
+  /**
+   * Determines Bootstrap badge styling based on CPU utilization percentage.
+   *
+   * @param cpuPercent CPU utilization value from 0 to 100.
+   * @returns CSS badge classes.
+   */
+  const getCpuBadgeColor = (cpuPercent: number): string => {
     if (cpuPercent >= 75) return 'bg-danger text-white';
     if (cpuPercent >= 50) return 'bg-warning text-dark';
     return 'bg-success-subtle text-success border border-success-subtle';
@@ -144,7 +191,6 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
 
   return (
     <div className="row g-3">
-      {/* Colonna Sinistra: Nodi, Pod Allocati, CPU Load e Simulazione Sovraccarico */}
       <div className="col-md-5">
         <Card className="h-100">
           <CardHeader className="bg-secondary text-white d-flex justify-content-between align-items-center">
@@ -175,7 +221,6 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
                           <span className={`badge ${isEdge ? 'bg-primary' : 'bg-dark'}`}>{node.type}</span>
                         </div>
                         
-                        {/* Carico CPU */}
                         <div className="d-flex align-items-center gap-1">
                           <span className="small text-muted">CPU:</span>
                           <span className={`badge ${getCpuBadgeColor(cpuPercent)}`}>
@@ -184,7 +229,6 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
                         </div>
                       </div>
 
-                      {/* Barra di avanzamento CPU */}
                       <div className="progress mb-2" style={{ height: '4px' }}>
                         <div 
                           className={`progress-bar ${cpuPercent >= 75 ? 'bg-danger' : cpuPercent >= 50 ? 'bg-warning' : 'bg-success'}`} 
@@ -197,7 +241,6 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
                         <code>{node.brokerUrl}</code> | GPS: [{node.latitude.toFixed(4)}, {node.longitude.toFixed(4)}]
                       </div>
 
-                      {/* Pod Allocati con Latenza di Ingresso Reale da PostGIS */}
                       <div className="d-flex align-items-center gap-1 flex-wrap mt-2">
                         <span className="small text-secondary me-1">Pod attivi ({hostedPods.length}):</span>
                         {hostedPods.length === 0 ? (
@@ -222,48 +265,45 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
                         )}
                       </div>
 
-                      {/* Bottoni di Simulazione (Solo per Nodi Edge) */}
-                        {isEdge && (
-                          <div className="d-flex gap-2 mt-2">
-                            {/* 1. Pulsante Sovraccarico CPU */}
-                            <button
-                              className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1 ${
-                                isStressed ? 'btn-danger text-white' : 'btn-outline-danger'
-                              }`}
-                              onClick={() => handleToggleStress(nodeId)}
-                              disabled={loadingNode === nodeId || isCordoned}
-                              style={{ fontSize: '0.75rem' }}
-                              title="Lancia pod stress-ng per saturare la CPU"
-                            >
-                              {loadingNode === nodeId && isStressed ? (
-                                '...'
-                              ) : isStressed ? (
-                                'Ferma Stress'
-                              ) : (
-                                'Sovraccarico (95%)'
-                              )}
-                            </button>
+                      {isEdge && (
+                        <div className="d-flex gap-2 mt-2">
+                          <button
+                            className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1 ${
+                              isStressed ? 'btn-danger text-white' : 'btn-outline-danger'
+                            }`}
+                            onClick={() => handleToggleStress(nodeId)}
+                            disabled={loadingNode === nodeId || isCordoned}
+                            style={{ fontSize: '0.75rem' }}
+                            title="Lancia pod stress-ng per saturare la CPU"
+                          >
+                            {loadingNode === nodeId && isStressed ? (
+                              '...'
+                            ) : isStressed ? (
+                              'Ferma Stress'
+                            ) : (
+                              'Sovraccarico (95%)'
+                            )}
+                          </button>
 
-                            {/* 2. Pulsante Spegni / Cordon Nodo */}
-                            <button
-                              className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1 ${
-                                isCordoned ? 'btn-success text-white' : 'btn-outline-dark'
-                              }`}
-                              onClick={() => handleToggleCordon(nodeId)}
-                              disabled={loadingNode === nodeId}
-                              style={{ fontSize: '0.75rem' }}
-                              title="Imposta il nodo su Cordon / Uncordon in Kubernetes"
-                            >
-                              {loadingNode === nodeId && !isStressed ? (
-                                '...'
-                              ) : isCordoned ? (
-                                'Riattiva Nodo'
-                              ) : (
-                                'Spegni Nodo'
-                              )}
-                            </button>
-                          </div>
-                        )}
+                          <button
+                            className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1 ${
+                              isCordoned ? 'btn-success text-white' : 'btn-outline-dark'
+                            }`}
+                            onClick={() => handleToggleCordon(nodeId)}
+                            disabled={loadingNode === nodeId}
+                            style={{ fontSize: '0.75rem' }}
+                            title="Imposta il nodo su Cordon / Uncordon in Kubernetes"
+                          >
+                            {loadingNode === nodeId && !isStressed ? (
+                              '...'
+                            ) : isCordoned ? (
+                              'Riattiva Nodo'
+                            ) : (
+                              'Spegni Nodo'
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -273,7 +313,6 @@ const InfrastructurePanel: React.FC<InfrastructurePanelProps> = ({ nodes, onRefr
         </Card>
       </div>
 
-      {/* Colonna Destra: Audit Log Migrazioni */}
       <div className="col-md-7">
         <Card className="h-100 d-flex flex-column">
           <CardHeader className="bg-dark text-white d-flex justify-content-between align-items-center">

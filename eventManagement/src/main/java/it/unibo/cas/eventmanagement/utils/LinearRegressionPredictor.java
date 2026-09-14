@@ -20,9 +20,11 @@ public class LinearRegressionPredictor {
     private static final double DAMPING_GAMMA = 0.35;
 
     /**
-     * Forecasts the future crowd size using weighted linear regression and damped trend projection.
+     * Forecasts the future crowd size using weighted linear regression and damped
+     * trend projection.
      *
-     * @param history       chronologically ordered list of historical analysis statistics
+     * @param history       chronologically ordered list of historical analysis
+     *                      statistics
      * @param futureMinutes forecast horizon in minutes
      * @return predicted number of people (>= 0), or null if history is insufficient
      */
@@ -33,10 +35,13 @@ public class LinearRegressionPredictor {
     /**
      * Forecasts the future crowd size bounded by maximum area capacity.
      *
-     * @param history       chronologically ordered list of historical analysis statistics
+     * @param history       chronologically ordered list of historical analysis
+     *                      statistics
      * @param futureMinutes forecast horizon in minutes
-     * @param maxCapacity   maximum area capacity limit (null for unbounded upper limit)
-     * @return predicted number of people clamped between 0 and maxCapacity, or null if history is insufficient
+     * @param maxCapacity   maximum area capacity limit (null for unbounded upper
+     *                      limit)
+     * @return predicted number of people clamped between 0 and maxCapacity, or null
+     *         if history is insufficient
      */
     public static Double predictFutureCrowd(List<AnalysisStats> history, int futureMinutes, Integer maxCapacity) {
         if (history == null || history.size() < 2) {
@@ -61,9 +66,11 @@ public class LinearRegressionPredictor {
     /**
      * Generates a list of predicted trend points at the specified step interval.
      *
-     * @param history       chronologically ordered list of historical analysis statistics
+     * @param history       chronologically ordered list of historical analysis
+     *                      statistics
      * @param futureMinutes total future horizon to predict in minutes
-     * @param stepSeconds   time step in seconds between consecutive prediction points
+     * @param stepSeconds   time step in seconds between consecutive prediction
+     *                      points
      * @return list of prediction points over time
      */
     public static List<PredictionPointDTO> predictFutureTrend(
@@ -74,10 +81,13 @@ public class LinearRegressionPredictor {
     /**
      * Generates a list of predicted trend points bounded by maximum area capacity.
      *
-     * @param history       chronologically ordered list of historical analysis statistics
+     * @param history       chronologically ordered list of historical analysis
+     *                      statistics
      * @param futureMinutes total future horizon to predict in minutes
-     * @param stepSeconds   time step in seconds between consecutive prediction points
-     * @param maxCapacity   maximum area capacity limit (null for unbounded upper limit)
+     * @param stepSeconds   time step in seconds between consecutive prediction
+     *                      points
+     * @param maxCapacity   maximum area capacity limit (null for unbounded upper
+     *                      limit)
      * @return list of prediction points clamped to the area capacity
      */
     public static List<PredictionPointDTO> predictFutureTrend(
@@ -192,7 +202,8 @@ public class LinearRegressionPredictor {
     }
 
     /**
-     * Clamps a prediction value to positive values and maximum capacity when provided.
+     * Clamps a prediction value to positive values and maximum capacity when
+     * provided.
      *
      * @param prediction  raw prediction value
      * @param maxCapacity maximum area capacity limit (optional)

@@ -1,3 +1,9 @@
+/**
+ * Area crowd analysis and prediction sidebar component.
+ * Displays interactive Recharts line charts showing historical vs. projected crowd count and density,
+ * stitching linear regression trends onto the historical time series for each selected monitoring zone.
+ */
+
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { AreaDTO, AnalysisStats } from '../../../types';
@@ -17,27 +23,37 @@ interface ChartData {
   predDensity?: number;
 }
 
+/**
+ * Renders the analysis sidebar with zone selection, time-series charts, and telemetry metadata cards.
+ *
+ * @param props Component properties containing the list of configured monitoring areas.
+ * @returns Rendered JSX sidebar element.
+ */
 const AnalysisSidebar: React.FC<AnalysisSidebarProps> = ({ areas }) => {
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [analysisData, setAnalysisData] = useState<AnalysisStats[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
+  /**
+   * Fetches historical statistics and linear regression predictions for the specified area,
+   * calculates the estimated area surface size in square meters, and merges the datasets into
+   * a chronological time-series array linking the end of history with the start of prediction.
+   *
+   * @param areaId The area name or identifier to analyze.
+   */
   const fetchAnalysis = async (areaId: string) => {
     setSelectedAreaId(areaId);
     setLoading(true);
     try {
       const [history, predictions] = await Promise.all([
         analysisApi.getAnalysisAll(areaId),
-        analysisApi.getPredictionTrend(areaId).catch(() => []) // fallback
+        analysisApi.getPredictionTrend(areaId).catch(() => [])
       ]);
       
-      // Ordina per timestamp crescente se non lo sono già
       history.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-      
       setAnalysisData(history);
       
-      // Calcola l'area in m^2 (density = people / area => area = people / density)
       let areaSize = 1;
       const validStat = history.find(s => s.density > 0 && s.estimatedPeople > 0);
       if (validStat) {
@@ -46,7 +62,6 @@ const AnalysisSidebar: React.FC<AnalysisSidebarProps> = ({ areas }) => {
 
       const dataMap = new Map<number, ChartData>();
       
-      // Inserisci dati storici
       history.forEach(stat => {
         const ts = new Date(stat.ts).getTime();
         const timeStr = new Date(stat.ts).toLocaleTimeString();
@@ -61,7 +76,6 @@ const AnalysisSidebar: React.FC<AnalysisSidebarProps> = ({ areas }) => {
       
       const lastHistoricalPoint = dataMap.size > 0 ? Array.from(dataMap.values()).pop() : null;
       
-      // Unisci le predizioni, agganciando l'inizio della predizione alla fine dello storico
       if (lastHistoricalPoint && predictions.length > 0) {
          lastHistoricalPoint.predPeople = lastHistoricalPoint.people;
          lastHistoricalPoint.predDensity = lastHistoricalPoint.density;
@@ -90,7 +104,7 @@ const AnalysisSidebar: React.FC<AnalysisSidebarProps> = ({ areas }) => {
       setChartData(sortedData);
 
     } catch (e) {
-      console.error(`Errore caricamento analisi per ${areaId}`, e);
+      console.error(`Error loading analysis for ${areaId}:`, e);
       setAnalysisData([]);
       setChartData([]);
     } finally {
@@ -174,7 +188,7 @@ const AnalysisSidebar: React.FC<AnalysisSidebarProps> = ({ areas }) => {
                       </div>
                       <div className="small">
                         <div className="mb-1"><strong>Nodo di calcolo:</strong> <span className="text-secondary">{latestInfo.node}</span></div>
-                        <div className="mb-1"><strong>Servito da:</strong> <span className="text-secondary">{latestInfo.servedBy || "N/A"}</span></div>
+                        <div className="mb-1"><strong>Servito da:</strong> <span className="text-secondary">{latestInfo.servedBy || 'N/A'}</span></div>
                         <div className="mb-1"><strong>Finestra temporale:</strong> <span className="text-secondary">{latestInfo.windowSeconds} s</span></div>
                       </div>
                     </CardBody>

@@ -1,6 +1,17 @@
+/**
+ * Orchestrator policy selector component.
+ * Allows operators to dynamically switch between placement algorithms
+ * (CONTEXT_AWARE, CLOUD_ONLY, STATIC) in the edge orchestrator service.
+ */
+
 import React, { useEffect, useState } from 'react';
 import { orchestrationApi, type OrchestrationPolicy } from '../../../api/orchestrationApi';
 
+/**
+ * Renders the policy selection dropdown, fetching initial configuration and pushing changes to the orchestrator.
+ *
+ * @returns Rendered JSX policy selector element.
+ */
 const PolicySelector: React.FC = () => {
   const [policy, setPolicy] = useState<OrchestrationPolicy>('CONTEXT_AWARE');
   const [loading, setLoading] = useState<boolean>(false);
@@ -10,17 +21,22 @@ const PolicySelector: React.FC = () => {
       .then(currentPolicy => {
         if (currentPolicy) setPolicy(currentPolicy);
       })
-      .catch(err => console.error('Errore nel recupero della policy iniziale:', err));
+      .catch(err => console.error('Error fetching initial orchestrator policy:', err));
   }, []);
 
+  /**
+   * Updates the active orchestration policy via the backend API.
+   *
+   * @param newPolicy The selected placement policy strategy.
+   */
   const handleChangePolicy = async (newPolicy: OrchestrationPolicy) => {
     setLoading(true);
     try {
       await orchestrationApi.setPolicy(newPolicy);
       setPolicy(newPolicy);
     } catch (err) {
-      console.error('Errore nel cambio policy:', err);
-      alert('Impossibile aggiornare la politica dell\'orchestratore.');
+      console.error('Error updating orchestrator policy:', err);
+      alert('Unable to update orchestrator policy.');
     } finally {
       setLoading(false);
     }

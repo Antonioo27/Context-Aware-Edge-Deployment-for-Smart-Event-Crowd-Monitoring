@@ -1,3 +1,9 @@
+/**
+ * Alerts and notifications sidebar component.
+ * Displays a prioritized feed of real-time alerts categorized by persona role and severity,
+ * and provides a dispatch form for broadcasting manual emergency alerts with GPS coordinates.
+ */
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { UserType, AlertType } from '../../../types';
 import type { ManualAlertDTO } from '../../../types';
@@ -12,6 +18,13 @@ interface AlertsSidebarProps {
   setManualAlertLocation?: (loc: {lat: number, lng: number} | null) => void;
 }
 
+/**
+ * Renders the alerts sidebar, sorting received notifications chronologically in descending order
+ * and synchronizing manual alert coordinates captured from map interactions.
+ *
+ * @param props Component properties containing manual alert selection modes and coordinate handlers.
+ * @returns Rendered JSX sidebar element.
+ */
 const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
   manualAlertMode,
   setManualAlertMode,
@@ -27,7 +40,6 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
   const [lat, setLat] = useState<number | ''>('');
   const [sendingAlert, setSendingAlert] = useState(false);
 
-  // Ordina gli alert dal più recente al meno recente (ts decrescente)
   const sortedAlerts = useMemo(() => {
     return [...alerts]
       .filter(a => selectedAlertType === 'ALL' || a.alert?.alertType === selectedAlertType)
@@ -38,7 +50,6 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
       });
   }, [alerts, selectedAlertType]);
 
-  // Sincronizza coordinate GPS dalla mappa
   useEffect(() => {
     if (manualAlertLocation) {
       setLat(manualAlertLocation.lat);
@@ -46,9 +57,12 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
     }
   }, [manualAlertLocation]);
 
+  /**
+   * Validates form inputs and dispatches a manual emergency alert to the backend.
+   */
   const handleSendManualAlert = async () => {
     if (!cause || lat === '' || lon === '') {
-      alert("Compila tutti i campi per l'alert manuale!");
+      alert('Please fill all fields for the manual alert.');
       return;
     }
     
@@ -61,14 +75,14 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
         lon: Number(lon)
       };
       await alertApi.sendManualAlert(dto);
-      alert("Alert inviato con successo!");
+      alert('Alert successfully sent.');
       setCause('');
       setLat('');
       setLon('');
       if (setManualAlertLocation) setManualAlertLocation(null);
       refreshAlerts();
     } catch (e) {
-      alert("Errore invio alert");
+      alert('Error sending alert');
     } finally {
       setSendingAlert(false);
     }
@@ -124,7 +138,7 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
               {sortedAlerts.map((notify, index) => (
                 <li key={index} className="list-group-item border-start border-4 border-danger mb-2 bg-light rounded shadow-sm">
                   <div className="d-flex justify-content-between align-items-start">
-                    <span className="fw-bold mb-1">{notify.priority} - {notify.alert?.cause || "System"}</span>
+                    <span className="fw-bold mb-1">{notify.priority} - {notify.alert?.cause || 'System'}</span>
                     <small className="text-muted ms-2 text-nowrap">
                       {notify.alert?.ts ? new Date(notify.alert.ts).toLocaleTimeString() : ''}
                     </small>
@@ -146,7 +160,6 @@ const AlertsSidebar: React.FC<AlertsSidebarProps> = ({
           )}
         </div>
 
-        {/* Sezione Alert Manuale */}
         <div className="p-3 bg-light border-top">
           <h6 className="fw-bold mb-2">Invia Alert Manuale</h6>
           <div className="mb-2">

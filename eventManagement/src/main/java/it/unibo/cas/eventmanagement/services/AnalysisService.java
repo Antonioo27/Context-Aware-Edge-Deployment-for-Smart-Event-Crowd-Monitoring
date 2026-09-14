@@ -18,10 +18,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
 
 /**
- * Service responsible for processing crowd analysis statistics, managing area congestion states,
- * generating proactive prediction-based alerts, and delivering future prediction trends.
+ * Service responsible for processing crowd analysis statistics, managing area
+ * congestion states,
+ * generating proactive prediction-based alerts, and delivering future
+ * prediction trends.
  */
 @Service
 @Slf4j
@@ -60,7 +63,8 @@ public class AnalysisService {
     private final Map<String, OffsetDateTime> lastPredictionAlerts = new ConcurrentHashMap<>();
 
     /**
-     * Adds a new analysis to the repository and triggers proactive crowd evaluation.
+     * Adds a new analysis to the repository and triggers proactive crowd
+     * evaluation.
      * 
      * @param analysisStats the analysis to add
      * @return the added analysis
@@ -79,7 +83,8 @@ public class AnalysisService {
     }
 
     /**
-     * Executes crowd prediction for the incoming statistics and emits proactive alerts when critical thresholds are exceeded.
+     * Executes crowd prediction for the incoming statistics and emits proactive
+     * alerts when critical thresholds are exceeded.
      * 
      * @param latestStats latest recorded analysis statistics
      */
@@ -91,19 +96,20 @@ public class AnalysisService {
         OffsetDateTime windowStart = latestStats.getTs().minusMinutes(predictionWindowMinutes);
         List<AnalysisStats> history = analysisStatsRepository.findRecentByAreaId(latestStats.getAreaId(), windowStart);
 
-        int maxCapacity = areaService.getCapacity(latestStats.getAreaId());
-        Double predictedPeople = LinearRegressionPredictor.predictFutureCrowd(history, predictionHorizonMinutes, maxCapacity);
+        int capacity = areaService.getCapacity(latestStats.getAreaId());
+        Double predictedPeople = LinearRegressionPredictor.predictFutureCrowd(history, predictionHorizonMinutes,
+                capacity);
 
         if (predictedPeople != null) {
             log.info("Predicted people in area {} in {} minutes: {}", latestStats.getAreaId(), predictionHorizonMinutes,
                     predictedPeople.intValue());
 
-            double predictedDensity = predictedPeople / maxCapacity;
+            double predictedOccupancy = predictedPeople / capacity;
 
-            if (predictedDensity > criticalThreshold) {
+            if (predictedOccupancy > criticalThreshold) {
                 OffsetDateTime lastAlert = lastPredictionAlerts.get(latestStats.getAreaId());
                 if (lastAlert == null || OffsetDateTime.now().isAfter(lastAlert.plusMinutes(2))) {
-                    
+
                     log.warn("PREDICTION ALERT: Area {} will become CRITICAL in {} minutes!", latestStats.getAreaId(),
                             predictionHorizonMinutes);
 
@@ -171,10 +177,12 @@ public class AnalysisService {
     }
 
     /**
-     * Computes and returns the list of predicted future trend points for the frontend.
+     * Computes and returns the list of predicted future trend points for the
+     * frontend.
      * 
      * @param areaId area identifier
-     * @return list of prediction points containing timestamps and estimated crowd sizes
+     * @return list of prediction points containing timestamps and estimated crowd
+     *         sizes
      */
     public List<PredictionPointDTO> getPredictionTrendByArea(String areaId) {
         if (areaId == null) {
@@ -183,7 +191,7 @@ public class AnalysisService {
 
         AnalysisStats latestStats = analysisStatsRepository.findFirstByAreaIdOrderByTsDesc(areaId);
         if (latestStats == null) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
 
         OffsetDateTime windowStart = latestStats.getTs().minusMinutes(predictionWindowMinutes);
@@ -201,7 +209,8 @@ public class AnalysisService {
             }
         }
 
-        return LinearRegressionPredictor.predictFutureTrend(history, predictionHorizonMinutes, stepSeconds, maxCapacity);
+        return LinearRegressionPredictor.predictFutureTrend(history, predictionHorizonMinutes, stepSeconds,
+                maxCapacity);
     }
 
     /**

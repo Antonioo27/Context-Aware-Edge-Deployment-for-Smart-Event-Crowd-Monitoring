@@ -1,3 +1,9 @@
+/**
+ * Main operations dashboard view component.
+ * Integrates GIS monitoring, real-time metrics telemetry, notification alerts,
+ * crowd regression charts, and Kubernetes edge/cloud infrastructure controls into a unified layout.
+ */
+
 import React, { useState, useEffect } from 'react';
 import AlertsSidebar from '../alerts/AlertsSidebar';
 import AnalysisSidebar from '../analysis/AnalysisSidebar';
@@ -12,6 +18,12 @@ import { Card, CardHeader, CardBody } from '../../ui/Card';
 import { useMqttAlerts } from '../../../hooks/useMqttAlerts';
 import MetricsSummary from '../metrics/MetricsSummary';
 
+/**
+ * Top-level dashboard component coordinating state between map drawing tools,
+ * real-time telemetry updates, MQTT fast-path listeners, and backend synchronization.
+ *
+ * @returns Rendered JSX dashboard component.
+ */
 const Dashboard: React.FC = () => {
   const { areas, nodes, refreshData } = useDashboardData();
   const [syncing, setSyncing] = useState<boolean>(false);
@@ -35,16 +47,19 @@ const Dashboard: React.FC = () => {
     handleCancel
   } = useMapInteractions(refreshData);
 
-  // Chiamata esplicita al sync K8s dal frontend
+  /**
+   * Triggers an explicit Kubernetes node discovery and synchronization workflow,
+   * importing cluster worker topology into the Event Management service.
+   */
   const handleSyncK8s = async () => {
     setSyncing(true);
     try {
       const syncedNodes = await nodeApi.syncK8sNodes();
-      alert(`Sincronizzazione completata con successo! Rilevati ${syncedNodes.length} nodi da Kubernetes.`);
+      alert(`Synchronization successful! Discovered ${syncedNodes.length} nodes from Kubernetes.`);
       await refreshData();
     } catch (err) {
-      console.error('Errore durante la sincronizzazione con Kubernetes', err);
-      alert('Errore durante la sincronizzazione dei nodi da K8s.');
+      console.error('Error synchronizing nodes with Kubernetes:', err);
+      alert('Error during Kubernetes node synchronization.');
     } finally {
       setSyncing(false);
     }
@@ -53,7 +68,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().then((permission) => {
-        console.log(`Permesso notifiche browser: ${permission}`);
+        console.log(`Browser notification permission: ${permission}`);
       });
     }
   }, []);
@@ -62,11 +77,8 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="container-fluid mt-2" data-testid="dashboard-container">
-      
-      {/* 1. Barra Metriche di Base (Requisito 5 della Traccia) */}
       <MetricsSummary />
     
-      {/* 3 Colonne: Alert | Mappa | Analisi */}
       <div className="row g-3">
         <div className="col-md-3">
           <AlertsSidebar 
@@ -122,7 +134,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Pannello Nodi e Migrazioni sottostante */}
       <div className="mt-3">
         <InfrastructurePanel 
           nodes={nodes} 

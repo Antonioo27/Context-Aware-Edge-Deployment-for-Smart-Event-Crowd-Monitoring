@@ -1,14 +1,13 @@
 """
-Loop principale
+Main simulation execution engine module.
 
-Ad ogni tick chiede a Scenario la matrice P(t), la passa a PopulationModel per muovere i device, chiede
-a ProbeEmitter gli eventi dovuti, li consegna al broker e registra la ground truth.
-
-Espone anche gli agganci per gli interventi manuali
+Orchestrates clock ticks, queries the scenario for time-dependent Markov transition matrices,
+applies crowd flow saturation, drives Poisson probe request emissions, broadcasts batches via MQTT,
+and logs exact ground truth populations.
 """
 
-
 from datetime import datetime, timezone
+import logging
 import random
 import threading
 import time
@@ -20,51 +19,50 @@ from .models import Area, Device
 from .population import PopulationModel
 from .scenario import Scenario
 from .transport import ProbePublisher
-import logging
+
 
 logger = logging.getLogger("simulator.engine")
 
+
 class SimulationEngine:
     """
-    Orchestratore della simulazione
+    Central coordinator orchestrating discrete-time simulation ticks, real-time pacing,
+    crowd relocation, telemetry emission, and interactive chaos testing injections.
     """
- 
-    def __init__(self, config: SimConfig):
 
+    def __init__(self, config: SimConfig):
+        """
+        Initializes the simulation engine, validating configuration parameters and instantiating sub-modules.
+
+        @param config Validated global simulation configuration instance.
+        """
         config.validate()
         self.config = config
         self.rng = random.Random(config.seed)
 
-        # Ordine canonico delle aree, condiviso da scenario e population.
         self.area_ids = config.area_ids()
-
-        # Stato runtime delle aree e device (creati in setup()).
         self.areas: list[Area] = [Area(config=ac) for ac in config.areas]
         self.devices: list[Device] = []
 
-        # Sottomoduli.
         self.scenario = Scenario.from_dynamic_areas(config.areas)
         self.population = PopulationModel(self.areas, self.devices, self.rng)
         self.emitter = ProbeEmitter(config, self.rng)
         self.publisher = ProbePublisher(config)
         self.ground_truth = GroundTruthRecorder(config, self.area_ids)
 
-        # Interventi manuali (mutati dal control server, altro thread).
         self._lock = threading.Lock()
-        self._boosts: dict[str, dict] = {}     # area_id -> {factor, until}
-        self._killed: set[str] = set()         # sensor_id spenti
-
+        self._boosts: dict[str, dict] = {}
+        self._killed: set[str] = set()
         self._stop = threading.Event()
+        self._t = 0.0
 
-
-    # Ciclo di vita
-
-    def setup(self):
+    def setup(self) -> None:
         """
-        Costruisce stato iniziale, crea device e li distribuisce nelle aree
+        Initializes runtime state, instantiates device entities with deterministic MACs,
+        assigns baseline RSSI signal profiles, staggers initial probe schedules, and seeds devices into areas.
         """
         self.devices = [
-            Device(mac=self._new_mac(i), area_id=self.area_ids[0], next_probe_at=0.0, rssi_base=0.0) 
+            Device(mac=self._new_mac(i), area_id=self.area_ids[0], next_probe_at=0.0, rssi_base=0.0)
             for i in range(self.config.n_people)
         ]
         for d in self.devices:
@@ -74,10 +72,10 @@ class SimulationEngine:
         self.population.devices = self.devices
         self.population.seed_devices()
 
-    def run(self):
+    def run(self) -> None:
         """
-        Esegue il loop fino a duration_seconds, rispettando tempo reale
-        e chiamando tick() ad ogni passo
+        Executes the main simulation loop advancing at a 1:1 real-time pace up to duration_seconds.
+        Handles clock lag detection, periodic tick scheduling, and graceful teardown upon completion or termination.
         """
         tick = self.config.tick_seconds
         self.publisher.start()
@@ -89,27 +87,28 @@ class SimulationEngine:
         try:
             while t < self.config.duration_seconds and not self._stop.is_set():
                 self.tick(t)
-                # Aspettiamo il tempo reale
                 t += tick
                 target = start + t
                 lag = target - time.monotonic()
                 if lag > 0:
                     self._stop.wait(lag)
                 elif lag < -tick:
-                    # Il tick ha sforato di piu' di un intero passo: il
-                    # simulatore non sta piu' al passo col tempo reale.
-                    logger.warning("tick t=%.0fs in ritardo di %.2fs", t, -lag)
+                    logger.warning("tick t=%.0fs lagging behind wall-clock by %.2fs", t, -lag)
         finally:
             self.teardown()
 
-    def tick(self, t:float):
+    def tick(self, t: float) -> None:
         """
-        Singolo passo della simulazione
-        1. P(t) = scenario.matricx_at(t) + saturazione
-        2. population.step(P(t))
-        3. events = emitter.emit_due(devices, t) (+ boost attivi)
-        4. publisher.enqueue(events)
-        5. ground_truth.record(t, areas)
+        Executes a single discrete simulation step:
+        1. Evaluates active rate boosts and killed sensor filters.
+        2. Interpolates the transition matrix P(t) from Scenario and applies flow saturation dampening.
+        3. Steps the Markov population model to relocate attendee devices.
+        4. Emits due probe requests and supplementary boost injections, filtering out killed sensors.
+        5. Logs exact ground truth headcount per area.
+        6. Enqueues and conditionally flushes telemetry batches to MQTT brokers.
+        7. Logs periodic connectivity and buffer health diagnostics every 30 seconds.
+
+        @param t Current simulation timestamp in seconds.
         """
         with self._lock:
             self._boosts = {a: b for a, b in self._boosts.items() if t < b["until"]}
@@ -130,35 +129,35 @@ class SimulationEngine:
         self.publisher.enqueue(events, t)
         self.publisher.flush_if_due(t)
 
-        # Diagnostica periodica: senza questa, un broker irraggiungibile
-        # e' invisibile e ti accorgi a fine run che non e' arrivato nulla.
         if int(t) % 30 == 0 and t > 0:
             s = self.publisher.snapshot_stats()
             connected_str = f"{s['connected_brokers']}/{s['total_brokers']}"
             if s["connected_brokers"] == 0 or s["buffered"]:
                 logger.warning(
-                    "t=%.0fs broker attivi=%s, in buffer=%s, scartati=%d",
+                    "t=%.0fs active brokers=%s, buffered=%s, dropped=%d",
                     t, connected_str, s["buffered"], s["probes_dropped"],
                 )
-        
-    def teardown(self):
+
+    def teardown(self) -> None:
         """
-        Flush finale del publisher e chiusura dei file.
+        Performs graceful cleanup on simulation shutdown, flushing outstanding MQTT batches and closing ground truth files.
         """
         self.publisher.close()
         self.ground_truth.close()
 
     def stop(self) -> None:
-        """Ferma il loop in modo pulito (chiamabile da un altro thread)."""
+        """
+        Signals the simulation thread to terminate execution cleanly.
+        """
         self._stop.set()
 
- 
-    # --- Interventi manuali (dal control server) ---
- 
-    def apply_boost(self, area_id: str, factor: float, duration_s: float):
+    def apply_boost(self, area_id: str, factor: float, duration_s: float) -> None:
         """
-        Moltiplica temporaneamente il rate di emissione di un'area.
-        Usato in demo; disattivato nei run sperimentali riproducibili.
+        Temporarily amplifies the probe emission rate for a targeted area to simulate sudden crowd surges.
+
+        @param area_id Target monitoring area identifier.
+        @param factor Multiplication factor applied to probe emission rate (minimum 1.0).
+        @param duration_s Duration in seconds for which the boost remains active.
         """
         if area_id not in self.population.index_of:
             return
@@ -167,44 +166,58 @@ class SimulationEngine:
                 "factor": max(1.0, factor),
                 "until": self._now + duration_s,
             }
- 
-    def apply_kill(self, sensor_id: str):
+
+    def apply_kill(self, sensor_id: str) -> None:
         """
-        Simula un sensore offline: smette di emettere per quell'area.
+        Simulates an Access Point sensor failure by suppressing all probe emissions originating from it.
+
+        @param sensor_id The access point sensor identifier to disable.
         """
         with self._lock:
             self._killed.add(sensor_id)
 
-
     def restore_sensor(self, sensor_id: str) -> None:
-        """Riattiva un sensore precedentemente spento."""
+        """
+        Restores a previously disabled sensor to normal operation.
+
+        @param sensor_id The access point sensor identifier to reactivate.
+        """
         with self._lock:
             self._killed.discard(sensor_id)
 
-    # --- Helper ---
-
     @property
     def _now(self) -> float:
+        """
+        Retrieves the most recent simulation clock timestamp.
+
+        @return Current simulation time in seconds.
+        """
         return getattr(self, "_t", 0.0)
 
     def _boost_events(self, boosts: dict[str, dict], t: float) -> list:
         """
-        Genera i probe extra per le aree in boost ancora attive.
+        Generates synthetic supplementary probe events for areas currently subjected to active emission rate boosts.
+        For a factor f, each device emits on average (f - 1) additional probes decomposed into integer and fractional parts.
 
-        Per un fattore f, ogni device dell'area emette in media (f-1) probe
-        extra in questo tick: un'iniezione additiva sopra l'emissione normale.
+        @param boosts Active boost configuration mapping area_id to factor and expiration time.
+        @param t Current simulation timestamp in seconds.
+        @return List of supplementary ProbeEvent instances.
         """
-        self._t = t  # memorizza per _now (usato da apply_boost)
+        self._t = t
         extra = []
         for area_id, b in boosts.items():
             surplus = b["factor"] - 1.0
             for d in self.population.devices_in_area(area_id):
-                # parte intera garantita + parte frazionaria probabilistica
                 k = int(surplus) + (1 if self.rng.random() < (surplus % 1.0) else 0)
                 for _ in range(k):
                     extra.append(self.emitter._make_event(d, t))
         return extra
 
     def _new_mac(self, i: int) -> str:
-        """MAC iniziale deterministico e unico per device."""
+        """
+        Generates a deterministic, unique locally-administered MAC address for device index i.
+
+        @param i Integer index of the device.
+        @return Formatted MAC address string (02:00:00:xx:xx:xx).
+        """
         return "02:00:00:%02x:%02x:%02x" % ((i >> 16) & 0xFF, (i >> 8) & 0xFF, i & 0xFF)
