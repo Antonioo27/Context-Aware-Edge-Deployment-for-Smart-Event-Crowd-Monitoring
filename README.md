@@ -33,7 +33,7 @@ The system architecture is deployed on a multi-node Kubernetes cluster (1 centra
 
 ### Dual-Path Communication Paradigm
 
-Data egress from peripheral analysis services is governed by two asymmetric, parallel communication routes tailored to message criticality[cite: 2]:
+Data egress from peripheral analysis services is governed by two asymmetric, parallel communication routes tailored to message criticality:
 
 * **Fast-Path (Reactive / Emergencies)**: When critical overcrowding or dangerous congestion trends are detected (e.g., three consecutive cycles of `HIGHLY_RISING`), the analysis pod immediately publishes the alert to the local Mosquitto broker on its host node. The notification is delivered directly to the frontend via WebSocket within a few milliseconds ($\sim 1\text{--}3\,\text{ms}$), completely bypassing cloud transit and database persistence.
 
@@ -60,13 +60,13 @@ Ensure the following tools and runtimes are installed on the host machine prior 
 
 ### 1. Environment and Permissions Setup
 
-Grant execution permissions to all automation scripts across the repository[cite: 1]:
+Grant execution permissions to all automation scripts across the repository:
 
 ```bash
 chmod +x *.sh eventManagement/*.sh eventAnalysis/*.sh
 ```
 
-Set up the virtual environment and install dependencies for the Python simulator[cite: 1]:
+Set up the virtual environment and install dependencies for the Python simulator:
 
 ```bash
 cd simulator
@@ -76,57 +76,57 @@ pip install -r requirements.txt
 cd ..
 ```
 
-Verify or configure the `.env` file in the project root containing settings for database connections, analysis thresholds, and MQTT endpoints[cite: 1].
+Verify or configure the `.env` file in the project root containing settings for database connections, analysis thresholds, and MQTT endpoints.
 
 ---
 
 ### 2. Multi-Node Kubernetes Cluster Provisioning
 
-Execute the provisioning script using the `--pf` flag to automatically establish all required port-forwarding tunnels[cite: 1]:
+Execute the provisioning script using the `--pf` flag to automatically establish all required port-forwarding tunnels:
 
 ```bash
-./start_cluster_pf.sh --pf
+./start_cluster.sh --pf
 ```
 
-The script executes the following automated workflow[cite: 1]:
+The script executes the following automated workflow:
 
-* Starts a 4-node Minikube cluster using the `edge-cluster` profile[cite: 1].
-* Labels the cluster nodes (`node-cloud` with `tier=cloud`, and `node-edge-1`, `node-edge-2`, `node-edge-3` with `tier=edge`)[cite: 1].
-* Enables and patches the `metrics-server` with a 10-second sampling resolution for accurate CPU monitoring[cite: 1].
-* Pre-loads the `polinux/stress-ng` container image into the Minikube node cache to eliminate pull latency during testing[cite: 1].
-* Creates the `event-analysis-config` ConfigMap from `.env` and applies base manifests in `k8s/` (PostGIS, Mosquitto, ServiceAccount, RBAC, and Backend)[cite: 1].
-* Executes local container build and redeployment scripts for Java services (`eventManagement` and `eventAnalysis`)[cite: 1].
-* Opens background `kubectl port-forward` tunnels[cite: 1]:
-* Backend REST API: `http://localhost:8080`[cite: 1]
-* Cloud MQTT Broker: TCP port `1883`[cite: 1]
-* Edge MQTT Brokers (1, 2, 3): TCP ports `1884`, `1885`, `1886`[cite: 1]
+* Starts a 4-node Minikube cluster using the `edge-cluster` profile.
+* Labels the cluster nodes (`node-cloud` with `tier=cloud`, and `node-edge-1`, `node-edge-2`, `node-edge-3` with `tier=edge`).
+* Enables and patches the `metrics-server` with a 10-second sampling resolution for accurate CPU monitoring.
+* Pre-loads the `polinux/stress-ng` container image into the Minikube node cache to eliminate pull latency during testing.
+* Creates the `event-analysis-config` ConfigMap from `.env` and applies base manifests in `k8s/` (PostGIS, Mosquitto, ServiceAccount, RBAC, and Backend).
+* Executes local container build and redeployment scripts for Java services (`eventManagement` and `eventAnalysis`).
+* Opens background `kubectl port-forward` tunnels:
+* Backend REST API: `http://localhost:8080`
+* Cloud MQTT Broker: TCP port `1883`
+* Edge MQTT Brokers (1, 2, 3): TCP ports `1884`, `1885`, `1886`
 
 
-* Launches the Minikube dashboard in the background[cite: 1].
+* Launches the Minikube dashboard in the background.
 
 ---
 
 ### 3. Geospatial Scenario Bootstrap
 
-In a new terminal window, initialize the event layout and geographic coordinates by running[cite: 1]:
+In a new terminal window, initialize the event layout and geographic coordinates by running:
 
 ```bash
 ./setup_scenario.sh
 ```
 
-This script automates the following actions[cite: 1]:
+This script automates the following actions:
 
-* Triggers synchronization of Kubernetes nodes into the PostGIS database via `/api/nodes/sync-k8s`[cite: 1].
-* Assigns physical GPS coordinates to Edge and Cloud nodes around Piazza Maggiore in Bologna[cite: 1].
-* Creates the target event record[cite: 1].
-* Registers 6 georeferenced areas modeled as PostGIS polygons (`entrata`, `corridoio`, `stage`, `stand`, `food`, `uscita`), each configured with capacity and priority attributes[cite: 1].
-* Automatically triggers the instantiation and scheduling of dedicated `event-analysis` pods on Kubernetes for each monitored area[cite: 1].
+* Triggers synchronization of Kubernetes nodes into the PostGIS database via `/api/nodes/sync-k8s`.
+* Assigns physical GPS coordinates to Edge and Cloud nodes around Piazza Maggiore in Bologna.
+* Creates the target event record.
+* Registers 6 georeferenced areas modeled as PostGIS polygons (`entrata`, `corridoio`, `stage`, `stand`, `food`, `uscita`), each configured with capacity and priority attributes.
+* Automatically triggers the instantiation and scheduling of dedicated `event-analysis` pods on Kubernetes for each monitored area.
 
 ---
 
 ### 4. Operator Dashboard Launch (Frontend)
 
-Open a dedicated terminal, install dependencies, and launch the development server[cite: 1]:
+Open a dedicated terminal, install dependencies, and launch the development server:
 
 ```bash
 cd event-frontend
@@ -134,7 +134,7 @@ npm install
 npm run dev
 ```
 
-The dashboard will be accessible in your browser at `http://localhost:5173` (or the port reported in the terminal)[cite: 1].
+The dashboard will be accessible in your browser at `http://localhost:5173` (or the port reported in the terminal).
 
 > **Browser Permissions Note**: Upon first loading the application, grant permission for native browser notifications to receive real-time critical alerts emitted over the Fast-Path.
 > 
@@ -144,7 +144,7 @@ The dashboard will be accessible in your browser at `http://localhost:5173` (or 
 
 ### 5. Running the Crowd Simulation
 
-In a separate terminal, launch the stochastic simulator to start synthetic radio frame generation and broadcast transmission[cite: 1]:
+In a separate terminal, launch the stochastic simulator to start synthetic radio frame generation and broadcast transmission:
 
 ```bash
 ./start_sim.sh
@@ -156,7 +156,7 @@ The generator queries the registered areas, instantiates the synthetic pedestria
 
 ## Resilience Testing and Chaos Engineering
 
-The platform supports dynamic fault-tolerance and overload-handling verification[cite: 2, 5]:
+The platform supports dynamic fault-tolerance and overload-handling verification:
 
 ### 1. CPU Overload Simulation (Overload Avoidance)
 
@@ -168,17 +168,17 @@ kubectl run cpu-stress --image=polinux/stress-ng --restart=Never \
   -- --cpu 0 --cpu-load 95 --timeout 180s
 ```
 
-* **Expected Behavior**: At the next control loop tick, the orchestrator detects that node CPU utilization exceeds the 75% threshold, assigns a heavy penalty to the congested node, and selectively evicts lower-priority pods toward idle edge nodes or the Cloud while keeping critical areas locally anchored[cite: 2, 5].
+* **Expected Behavior**: At the next control loop tick, the orchestrator detects that node CPU utilization exceeds the 75% threshold, assigns a heavy penalty to the congested node, and selectively evicts lower-priority pods toward idle edge nodes or the Cloud while keeping critical areas locally anchored.
 
 ### 2. Node Failure Simulation (Failover and Failback)
 
-By unscheduling and isolating an Edge node from cluster scheduling[cite: 2, 5]:
+By unscheduling and isolating an Edge node from cluster scheduling:
 
 ```bash
 kubectl cordon edge-cluster-m02
 ```
 
-* **Expected Behavior**: The orchestrator detects the unschedulable state, assigns an infinite cost to the active allocation, and executes an immediate failover bypassing hysteresis[cite: 2, 5]. Once the node is uncordoned (`kubectl uncordon edge-cluster-m02`), the cost function re-evaluates the configuration and authorizes a controlled return (failback) only if the net cost reduction exceeds the hysteresis threshold[cite: 2, 5].
+* **Expected Behavior**: The orchestrator detects the unschedulable state, assigns an infinite cost to the active allocation, and executes an immediate failover bypassing hysteresis. Once the node is uncordoned (`kubectl uncordon edge-cluster-m02`), the cost function re-evaluates the configuration and authorizes a controlled return (failback) only if the net cost reduction exceeds the hysteresis threshold.
 
 ---
 
@@ -186,7 +186,7 @@ kubectl cordon edge-cluster-m02
 
 ### Live Configuration Reload
 
-If configuration parameters in `.env` are updated (e.g., trend angles, database credentials), apply changes to the ConfigMap and reload deployments without restarting Minikube[cite: 1]:
+If configuration parameters in `.env` are updated (e.g., trend angles, database credentials), apply changes to the ConfigMap and reload deployments without restarting Minikube:
 
 ```bash
 ./update_env.sh
@@ -194,7 +194,7 @@ If configuration parameters in `.env` are updated (e.g., trend angles, database 
 
 ### Stopping the Infrastructure
 
-To cleanly terminate background processes (port-forwarding, simulator, dashboard), purge analysis pods, and stop the Minikube cluster[cite: 1]:
+To cleanly terminate background processes (port-forwarding, simulator, dashboard), purge analysis pods, and stop the Minikube cluster:
 
 ```bash
 ./stop_all.sh
@@ -208,8 +208,7 @@ To cleanly terminate background processes (port-forwarding, simulator, dashboard
 .
 ├── docker-compose.yaml        # Local auxiliary configurations
 ├── setup_scenario.sh          # Bootstrap script for nodes, event, and areas in PostGIS
-├── start_cluster_pf.sh        # Starts Minikube cluster, tunes metrics, deploys, and sets up port-forwarding
-├── start_cluster.sh           # Alternative basic cluster startup script
+├── start_cluster.sh        # Starts Minikube cluster, tunes metrics, deploys, and sets up port-forwarding
 ├── start_sim.sh               # Startup script for Python crowd traffic simulator
 ├── stop_all.sh                # Complete system teardown and cleanup procedure
 ├── update_env.sh              # Live propagation of .env variables to Kubernetes deployments

@@ -16,6 +16,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import it.unibo.cas.eventmanagement.exception.ResourceNotFoundException;
 
+
+/**
+ * Service managing physical event areas and geospatial boundaries.
+ *
+ * Architectural Role:
+ * - Manages the lifecycle and attributes of event areas (capacity, priority, polygon boundaries).
+ * - Coordinates with PostGIS via repository queries to calculate area surfaces in square meters
+ *   and resolve GPS coordinates to specific areas.
+ * - Tracks real-time crowd risk states (NONE, LOW, MEDIUM, HIGH, CRITICAL) used by the orchestrator.
+ */
 @Service
 public class AreaService {
 

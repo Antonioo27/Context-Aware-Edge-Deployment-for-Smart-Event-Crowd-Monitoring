@@ -2,7 +2,6 @@ package it.unibo.cas.eventmanagement.services;
 
 import it.unibo.cas.eventmanagement.models.DTOs.MigrationDTO;
 import it.unibo.cas.eventmanagement.models.entities.Migration;
-import it.unibo.cas.eventmanagement.models.enums.OrchestrationPolicy;
 import it.unibo.cas.eventmanagement.repositories.MigrationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +12,15 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Service that manages pod migration history and audit records in the database.
+ *
+ * Architectural Role:
+ * - Persists workload relocation decisions triggered by the orchestration control loop.
+ * - Tracks source and destination nodes, placement costs, reasons, and Kubernetes execution status.
+ * - Provides query methods used by REST endpoints to display migration logs in the web dashboard.
+ * - Supports batch cleanup of migration history to reset test scenarios.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -77,13 +85,10 @@ public class MigrationService {
                 .build();
     }
 
-    /**
-     * Elimina tutte le migrazioni registrate nel database.
-     */
     @Transactional
     public void deleteAllMigrations() {
         long count = migrationRepository.count();
-        migrationRepository.deleteAllInBatch(); // deleteAllInBatch esegue una singola query DELETE veloce
+        migrationRepository.deleteAllInBatch(); 
         log.warn("[MIGRATION SERVICE] Eliminate tutte le {} migrazioni dal database.", count);
     }
 }

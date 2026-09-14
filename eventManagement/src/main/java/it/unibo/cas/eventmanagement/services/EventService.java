@@ -8,7 +8,14 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-
+/**
+ * Service responsible for managing the root event lifecycle in the system.
+ *
+ * Architectural Role:
+ * - Enforces a single-event model per running instance of the backend platform.
+ * - Coordinates cascading deletions across all domain layers and infrastructure services.
+ * - Serves as the root parent entity for spatial areas, crowd analyses, and safety alerts.
+ */
 @Service
 public class EventService {
     @Autowired

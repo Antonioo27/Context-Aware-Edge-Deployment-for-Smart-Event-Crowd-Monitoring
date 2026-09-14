@@ -14,15 +14,22 @@ import org.springframework.stereotype.Service;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Service that collects, aggregates, and computes global system telemetry metrics.
+ *
+ * Architectural Role:
+ * - Computes simulated network latency for every area under both Slow-Path (database sync) and Fast-Path (alert delivery) modes.
+ * - Aggregates the total number of processed analysis windows and active operational alerts.
+ * - Queries the Kubernetes orchestration layer to obtain cluster CPU usage and pod placement counts.
+ * - Produces the unified SystemMetricsDTO snapshot consumed by the frontend monitoring dashboard.
+ */
 @Service
 public class MetricsService {
 
     @Autowired
     private LatencyProperties latencyConfig;
 
-    private final AtomicLong totalRequestsCounter = new AtomicLong(0);
 
     @Autowired
     private AreaRepository areaRepository;
@@ -40,11 +47,13 @@ public class MetricsService {
     private KubernetesOrchestrationService orchestrationService;
 
 
-
-    public void incrementRequestCounter() {
-        totalRequestsCounter.incrementAndGet();
-    }
-
+    /**
+     * Builds a real-time snapshot of system metrics across all monitored areas and compute nodes.
+     * Computes Slow-Path and Fast-Path latencies based on node assignments, counts operational alerts,
+     * and compiles infrastructure CPU and pod allocation statistics.
+     *
+     * @return a {@link SystemMetricsDTO} containing the complete operational telemetry snapshot
+     */
     public synchronized SystemMetricsDTO getSystemMetrics() {
         List<Area> areas = areaRepository.findAll();
         Map<String, String> assignments = orchestrationService.getCurrentAssignments();
@@ -77,7 +86,7 @@ public class MetricsService {
         double avgSlow = count > 0 ? Math.round((sumSlow / count) * 10.0) / 10.0 : 0.0;
         double avgFast = count > 0 ? Math.round((sumFast / count) * 10.0) / 10.0 : 0.0;
 
-        long totalReqs = Math.max(totalRequestsCounter.get(), analysisStatsRepository.count());
+        long totalReqs = analysisStatsRepository.count();
 
         long operationalAlerts = alertRepository.countByAlertTypeIn(
                 List.of(AlertType.MANUAL, AlertType.AUTOMATIC)
@@ -94,7 +103,4 @@ public class MetricsService {
                 orchestrationService.getNodePodCountMap()
         );
     }
-
-
-
 }

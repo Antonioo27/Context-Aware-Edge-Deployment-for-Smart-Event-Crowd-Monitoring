@@ -13,6 +13,17 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
+
+/**
+ * Service that handles notification creation and delivery based on crowd safety alerts.
+ *
+ * Architectural Role:
+ * - Translates high-level alerts (automatic crowd spikes, predictions, and manual operator reports)
+ *   into specific text guidance tailored to different audience roles (USER, OPERATOR, ORGANIZER).
+ * - Contextualizes alert messages based on the topological function of the area
+ *   (e.g., entrance gates, exit routes, attraction stages, transit paths).
+ * - Persists generated notifications in the relational database for retrieval by mobile apps and dashboards.
+ */
 @Service
 public class NotifyService {
     @Autowired
@@ -21,6 +32,14 @@ public class NotifyService {
     @Autowired
     private NotificationRepository notificationRepository;
 
+    /**
+     * Creates role-specific notifications for an automated crowd alert.
+     * Customizes messages according to the topological type of the area (e.g., entrance, exit, stage)
+     * and dispatches separate notifications to regular attendees (USER), field personnel (OPERATOR),
+     * and event coordination staff (ORGANIZER).
+     *
+     * @param alert the automated crowd alert entity containing area identifier and timestamp
+     */
     public void notifyAutomaticAlert(Alert alert) {
         Area area = areaService.getArea(alert.getAreaId());
         String message = "Alta densità di persone nell'area " + alert.getAreaId();

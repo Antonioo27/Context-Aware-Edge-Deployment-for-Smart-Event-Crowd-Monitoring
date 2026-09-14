@@ -388,9 +388,9 @@ public class KubernetesOrchestrationService {
     }
 
     /**
-     * Collects all node identifiers that are running active stress-ng pods[cite: 1].
+     * Collects all node identifiers that are running active stress-ng pods.
      *
-     * @return list of node identifiers currently under CPU stress[cite: 1]
+     * @return list of node identifiers currently under CPU stress
      */
     public List<String> getStressedNodeIds() {
         List<String> stressed = new ArrayList<>();

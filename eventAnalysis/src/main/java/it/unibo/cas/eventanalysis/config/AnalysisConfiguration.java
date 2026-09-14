@@ -30,7 +30,6 @@ public class AnalysisConfiguration {
      */
     @Bean
     public Area currentArea(EventManagementClient eventManagementClient, AnalysisProperties properties) {
-        // call the backend to retrieve area capacity and m^2
         int capacity = eventManagementClient.getAreaCapacity(properties.areaId());
         double m2 = eventManagementClient.getM2(properties.areaId());
         Area area = new Area(properties.areaId(), capacity, m2);

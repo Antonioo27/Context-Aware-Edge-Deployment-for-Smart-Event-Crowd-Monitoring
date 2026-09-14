@@ -69,34 +69,6 @@ public class AnalysisController {
         return  ResponseEntity.ok(analysisStats);
     }
 
-    // @GetMapping("area/{areaId}/analysis-people")
-    // public ResponseEntity<List<Long>> getPeopleAnalysis(@PathVariable String areaId) {
-    //     if (areaId == null) {
-    //         return ResponseEntity.badRequest().build();
-    //     }
-    //     List<Long> analysisStats;
-    //     try {
-    //         analysisStats = analysisService.getStatsByArea(areaId, Long.class);
-    //     } catch (Exception e) {
-    //         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-    //     }
-    //     return  ResponseEntity.ok(analysisStats);
-    // }
-
-    // @GetMapping("area/{areaId}/analysis-density")
-    // public ResponseEntity<List<Double>> getDensityAnalysis(@PathVariable String areaId) {
-    //     if (areaId == null) {
-    //         return ResponseEntity.badRequest().build();
-    //     }
-    //     List<Double> analysisStats;
-    //     try {
-    //         analysisStats = analysisService.getStatsByArea(areaId, Double.class);
-    //     } catch (Exception e) {
-    //         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-    //     }
-    //     return  ResponseEntity.ok(analysisStats);
-    // }
-
     @GetMapping("area/{areaId}/prediction")
     public ResponseEntity<List<PredictionPointDTO>> getPredictionTrend(@PathVariable String areaId) {
         if (areaId == null) {

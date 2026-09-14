@@ -29,6 +29,18 @@ import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Central infrastructure service managing compute nodes (Edge and Cloud), network latencies,
+ * and physical spatial positioning within the monitoring system.
+ *
+ * Architectural Role:
+ * - Kubernetes Auto-Discovery: Discovers cluster nodes via Fabric8 API and synchronizes their
+ *   network IP addresses and default MQTT broker endpoints to PostgreSQL.
+ * - PostGIS Spatial Modeling: Uses PostGIS geodesic functions to measure physical distances
+ *   between event areas and compute nodes, deriving dynamic network ingress latencies.
+ * - Cluster Allocation Tracking: Inspects running Kubernetes pods in real time to map each active
+ *   event analysis worker to its current host node.
+ */
 @Service
 public class NodeService {
     
@@ -49,9 +61,13 @@ public class NodeService {
     private KubernetesOrchestrationService kubernetesOrchestrationService;
 
     /**
-    * Interroga l'API Server di Kubernetes per scoprire i nodi del cluster
-    * e creare/aggiornare le bozze dei nodi logici nel DB postgres
-    */
+     * Discovers all physical and virtual nodes from the Kubernetes cluster API and synchronizes
+     * them into the PostgreSQL database. Extracts the node IP to construct the local MQTT broker
+     * URL reachable by external components like the Python simulator.
+     *
+     * @return list of synchronized node data transfer objects
+     * @throws RuntimeException if the discovery call to Kubernetes fails
+     */
     @Transactional
     public List<NodeDTO> syncNodesFromKubernetes() {
         logger.info("Avvio auto-discovery nodi dal cluster Kubernetes...");    
@@ -72,11 +88,9 @@ public class NodeService {
                 NodeType nodeType = tierLabel.equalsIgnoreCase("CLOUD") ? NodeType.CLOUD : NodeType.EDGE;
 
 
-                // Estrazione dinamica dell'ip reale del nodo k8s
                 String nodeIp = null;
                 if (k8sNode.getStatus() != null && k8sNode.getStatus().getAddresses() != null) {
                     for (var addr : k8sNode.getStatus().getAddresses()) {
-                        // Priorità all'ExternalIP se presente, altrimenti usiamo l'InternalIP
                         if ("ExternalIP".equalsIgnoreCase(addr.getType()) && addr.getAddress() != null) {
                             nodeIp = addr.getAddress();
                             break; 
@@ -86,13 +100,11 @@ public class NodeService {
                     }
                 }
 
-                // Fallback di sicurezza in locale
                 if (nodeIp == null || nodeIp.isBlank()) {
                     nodeIp = "127.0.0.1";
                     logger.warn("Impossibile recuperare l'IP per il nodo K8s {}. Uso fallback: 127.0.0.1", nodeId);
                 }
 
-                // Costruzione dell'URL del broker Mosquitto esposto sul nodo
                 String brokerUrl = "tcp://" + nodeIp + ":1883";
                 
                 Optional<Node> existing = nodeRepository.findById(nodeId);
@@ -109,7 +121,7 @@ public class NodeService {
                         .name("Nodo " + nodeType + " (" + nodeId + ")")
                         .type(nodeType)
                         .brokerUrl(brokerUrl)
-                        .location(geometryFactory.createPoint(new Coordinate(0.0, 0.0))) // Coord temporanee da mappa
+                        .location(geometryFactory.createPoint(new Coordinate(0.0, 0.0))) 
                         .build();
                     logger.info("Scoperto nuovo nodo K8s: id={}, type={}, brokerUrl={}", nodeId, nodeType, brokerUrl);
             }
@@ -126,11 +138,7 @@ public class NodeService {
         }
     }
 
-    /**
-     * Aggiorna la posizione geografica per un nodo logico
-     * 
-     * 
-     */
+    
     @Transactional
     public NodeDTO updateNodeLocationAndBroker(String nodeId, NodeDTO dto) {
         Node node = nodeRepository.findById(nodeId)
@@ -148,12 +156,10 @@ public class NodeService {
             node.setBrokerUrl(dto.getBrokerUrl());
         }
 
-        // Aggiorna il punto geometrico PostGIS solo se le coordinate sono fornite
         if (dto.getLatitude() < -90 || dto.getLatitude() > 90 || dto.getLongitude() < -180 || dto.getLongitude() > 180) {
             throw new IllegalArgumentException("Coordinate Lat/Lon fuori dal range valido");
         }
         
-        // Aggiorna il punto geometrico PostGIS
         node.setLocation(geometryFactory.createPoint(new Coordinate(dto.getLongitude(), dto.getLatitude())));
         Node updated = nodeRepository.save(node);
         
@@ -217,6 +223,13 @@ public class NodeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Nodo con ID '" + nodeId + "' non trovato"));
     }
 
+    /**
+     * Calculates geodesic distances and estimated network ingress latencies across all area-node pairs
+     * using PostGIS spatial functions.
+     *
+     * @return list of distance and latency data transfer objects between areas and nodes
+     * @throws RuntimeException if the PostGIS query fails
+     */
     public List<NodeDistanceDTO> getAreaNodeDistances() {
         try {
             List<Object[]> results = nodeRepository.findAllAreaNodeDistances();
@@ -248,10 +261,18 @@ public class NodeService {
         }
     }
 
+    /**
+     * Finds the nearest Edge node for a given event area using PostGIS spatial indexing.
+     * Defaults to the Cloud node if no Edge nodes are available.
+     *
+     * @param area the event area entity containing the boundary polygon
+     * @return identifier of the closest Edge node, or node-cloud as fallback
+     * @throws RuntimeException if the PostGIS query fails
+     */
     public String getClosestIdForArea(Area area) {
         try {            
             return nodeRepository.findClosestEdgeNodeId(area.getBoundary())
-                            .orElse("node-cloud"); // Fallback sul Cloud se non ci sono nodi Edge
+                            .orElse("node-cloud");
         } catch (Exception e) {
             logger.error("Errore durante l'esecuzione della query spaziale PostGIS trovare nodo più vicino ad un'area: {}", e.getMessage());
             throw new RuntimeException("Errore nel calcolo della ricerca distanza minore nodo area", e);
@@ -259,14 +280,20 @@ public class NodeService {
     
     }
 
+    /**
+     * Finds the nearest Edge node for a given event area using PostGIS spatial indexing.
+     * Defaults to the Cloud node if no Edge nodes are available.
+     *
+     * @param area the event area entity containing the boundary polygon
+     * @return identifier of the closest Edge node, or node-cloud as fallback
+     * @throws RuntimeException if the PostGIS query fails
+     */
     public double getIngressLatency(Area area, String nodeId) {
-        // 1. Caso Nodo Cloud -> Latenza WAN fissa di ingresso (40 ms)
         if ("node-cloud".equals(nodeId) || (nodeId != null && nodeId.toLowerCase().contains("cloud"))) {
             return latencyConfig.getCloudIngressMs();
         }
 
         try {
-            // 2. Calcolo distanza geospaziale diretta da PostGIS
             Double distanceMeters = nodeRepository.findDistanceBetweenAreaAndNode(area.getName(), nodeId);
 
             if (distanceMeters != null) {
@@ -277,36 +304,35 @@ public class NodeService {
                     area.getName(), nodeId, e.getMessage());
         }
 
-        // 3. Fallback di sicurezza: se la query fallisce consideriamo latenza WAN
         return latencyConfig.getCloudIngressMs();
     }
 
+    /**
+     * Inspects active Kubernetes worker pods and maps each analysis pod to its current host node.
+     * Queries the Kubernetes API server directly to verify real-time scheduling positions.
+     *
+     * @return map of node identifiers to lists of assigned analysis pod names
+     */
     public Map<String, List<String>> getNodePodAllocations() {
         Map<String, List<String>> allocationMap = new HashMap<>();
         
-        // Inizializza la mappa con tutti i nodi censiti (lista vuota)
         List<Node> allNodes = nodeRepository.findAll();
         for (Node n : allNodes) {
             allocationMap.put(n.getId(), new ArrayList<>());
         }
-        // Assicurati che esista anche la chiave node-cloud
         allocationMap.putIfAbsent("node-cloud", new ArrayList<>());
 
         try {
-            // Recupera tutti i Pod del namespace
             var pods = kubernetesClient.pods().inNamespace(kubernetesClient.getNamespace()).list().getItems();
             for (var pod : pods) {
                 String podName = pod.getMetadata().getName();
                 
-                // Filtra solo i pod dei servizi di analisi
                 if (podName.startsWith("event-analysis-")) {
-                    // 1. Prova a leggere il node-id dal nodeSelector
                     String targetNodeId = null;
                     if (pod.getSpec() != null && pod.getSpec().getNodeSelector() != null) {
                         targetNodeId = pod.getSpec().getNodeSelector().get("node-id");
                     }
                     
-                    // 2. Se non presente nel nodeSelector, ricava il nodo fisico reale di K8s
                     if (targetNodeId == null && pod.getSpec() != null && pod.getSpec().getNodeName() != null) {
                         String k8sNodeName = pod.getSpec().getNodeName();
                         var k8sNode = kubernetesClient.nodes().withName(k8sNodeName).get();
@@ -332,6 +358,11 @@ public class NodeService {
         return allocationMap;
     }
 
+    /**
+     * Retrieves the current CPU utilization percentage for every node from the orchestration layer[cite: 3].
+     *
+     * @return map linking node identifiers to their CPU usage percentages[cite: 3]
+     */
     public Map<String, Double> getNodeCpuMetrics() {
         return kubernetesOrchestrationService.getNodeCpuUsagePercentageMap();
     }
@@ -341,7 +372,6 @@ public class NodeService {
         if ("node-cloud".equals(nodeId)) {
             return latencyConfig.getCloudIngressMs();
         }
-        // Base 1.0 ms + propagazione metrica
         return latencyConfig.getBaseEdgeMs() + (distanceMeters * latencyConfig.getMsPerMeter());
     }
 
