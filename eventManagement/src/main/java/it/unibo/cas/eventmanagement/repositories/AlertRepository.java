@@ -11,9 +11,7 @@ import it.unibo.cas.eventmanagement.models.enums.AlertType;;
 @Repository
 public interface AlertRepository extends JpaRepository<Alert, Long> {
 
-    // Conta solo gli alert che corrispondono ai tipi specificati (MANUAL, AUTOMATIC)
     long countByAlertTypeIn(List<AlertType> types);
 
-    // In alternativa, esclude esplicitamente un tipo specifico (PREDICTION)
     long countByAlertTypeNot(AlertType excludedType);
 }

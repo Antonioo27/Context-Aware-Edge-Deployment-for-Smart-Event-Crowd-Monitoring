@@ -22,8 +22,6 @@ public class MetricsService {
     @Autowired
     private LatencyProperties latencyConfig;
 
-    private Double currentEmaSlowPath = null;
-    private Double currentEmaFastPath = null;
     private final AtomicLong totalRequestsCounter = new AtomicLong(0);
 
     @Autowired
@@ -62,16 +60,13 @@ public class MetricsService {
             String currentNode = assignments.getOrDefault(area.getName(), "node-cloud");
             boolean isCloud = "node-cloud".equals(currentNode);
 
-            // 1. Tratta Ingress (PostGIS o WAN)
             double lIngresso = nodeService.getIngressLatency(area, currentNode);
 
-            // 2. Slow-Path (Persistenza DB Cloud)
             double lUscita = isCloud ? latencyConfig.getExitCloudMs() : latencyConfig.getExitEdgeMs();
             double lSlow = lIngresso + latencyConfig.getTransportMs() + lUscita;
             areaSlowLatencies.put(area.getName(), Math.round(lSlow * 10.0) / 10.0);
             sumSlow += lSlow;
 
-            // 3. Fast-Path (Notifica reattiva Alert)
             double lWsNotifica = isCloud ? latencyConfig.getWsWanMs() : latencyConfig.getWsLocalMs();
             double lFast = lIngresso + latencyConfig.getTransportMs() + lWsNotifica;
             areaFastLatencies.put(area.getName(), Math.round(lFast * 10.0) / 10.0);
@@ -84,7 +79,6 @@ public class MetricsService {
 
         long totalReqs = Math.max(totalRequestsCounter.get(), analysisStatsRepository.count());
 
-        // Conta unicamente gli alert MANUAL e AUTOMATIC
         long operationalAlerts = alertRepository.countByAlertTypeIn(
                 List.of(AlertType.MANUAL, AlertType.AUTOMATIC)
         );

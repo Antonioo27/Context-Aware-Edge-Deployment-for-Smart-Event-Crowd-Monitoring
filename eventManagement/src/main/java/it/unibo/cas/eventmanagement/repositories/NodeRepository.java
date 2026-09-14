@@ -14,8 +14,8 @@ import it.unibo.cas.eventmanagement.models.entities.Node;
 public interface NodeRepository extends JpaRepository<Node, String> {
     
     /**
-     * Calcola la distanza geodesica in metri tra la superficie/bordo dell'Area (Polygon)
-     * e la posizione del Nodo (Point) usando il cast a geography di PostGIS (SRID 4326).
+     * Computes geodesic distances between all areas and all registered nodes.
+     * Uses a cross join to produce a complete distance matrix.
      */
     @Query(value = """
             SELECT a.name AS areaName, n.id AS nodeId, 
@@ -25,7 +25,7 @@ public interface NodeRepository extends JpaRepository<Node, String> {
     List<Object[]> findAllAreaNodeDistances();   
     
     /**
-     * Calcola la distanza in metri tra un'area e un nodo specifici.
+     * Computes the distance in meters between a specific area and a single node.
      */
     @Query(value = """
             SELECT ST_Distance(a.boundary::geography, n.location::geography) AS distanceMeters
@@ -34,6 +34,10 @@ public interface NodeRepository extends JpaRepository<Node, String> {
             """, nativeQuery = true)
     Double findDistanceBetweenAreaAndNode(@Param("areaName") String areaName, @Param("nodeId") String nodeId);
 
+    /**
+     * Finds the nearest healthy Edge node to the provided area boundary.
+     * Enforces the 4326 SRID on the boundary to prevent mixed SRID exceptions.
+     */
     @Query(value = """
                     SELECT n.id FROM nodes n
                     WHERE n.type = 'EDGE'

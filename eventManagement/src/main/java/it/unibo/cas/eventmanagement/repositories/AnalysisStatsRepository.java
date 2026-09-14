@@ -19,6 +19,7 @@ public interface AnalysisStatsRepository extends JpaRepository<AnalysisStats, Lo
 
     @Query("SELECT a.density FROM AnalysisStats a WHERE a.areaId = :areaId ORDER BY a.ts")
     List<Double> findDensityByAreaIdOrderByTs(@Param("areaId") String areaId);
+    
     @Query("SELECT a FROM AnalysisStats a WHERE a.areaId = :areaId AND a.ts >= :after ORDER BY a.ts")
     List<AnalysisStats> findRecentByAreaId(@Param("areaId") String areaId, @Param("after") java.time.OffsetDateTime after);
 

@@ -1,203 +1,223 @@
 # Context-Aware Edge Deployment for Smart Event Crowd Monitoring
 
+Distributed, **Context-Aware** (Edge/Cloud) platform based on **Kubernetes** for real-time crowd density and public safety monitoring during large-scale public events.
 
-## 1. Prerequisiti
-
-- Python 3.11+
-- Docker e Docker Compose
-- `mosquitto-clients` per ispezionare i topic da riga di comando:
-
-```bash
-sudo apt install mosquitto-clients
-```
-
-## 2. Ambiente Python
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r simulator/requirements.txt
-```
-
-`requirements.txt` deve contenere almeno:
-
-```
-paho-mqtt>=2.0
-fastapi
-uvicorn
-```
-
-Il vincolo su `paho-mqtt>=2.0` non e' negoziabile: il codice usa
-`CallbackAPIVersion.VERSION2`, che nella serie 1.x non esiste.
-
-## 3. Avviare il broker
-
-```bash
-docker compose up -d broker
-docker compose logs -f broker
-```
-
-Nei log devi vedere il listener aperto su `1883` e nessun errore di
-configurazione. Per fermarlo:
-
-```bash
-docker compose down          # ferma il broker, mantiene la persistenza
-docker compose down -v       # cancella anche le sessioni persistenti
-```
-
-Quel `-v` non e' un dettaglio: azzera le code dei subscriber offline, quindi
-usalo fra un esperimento e l'altro per partire da uno stato pulito, e **non**
-usarlo in mezzo a un test di persistenza o falsificherai il risultato.
-
-### Perche' serve un file di configurazione
-
-Mosquitto 2.x ha due default che in container bloccano tutto:
-
-- il listener ascolta solo sull'interfaccia interna, quindi dall'host non si
-  connette nessuno;
-- `allow_anonymous` e' `false`, quindi ogni CONNECT viene rifiutato con
-  `rc=5 (not authorised)`.
-
-`deploy/mosquitto/mosquitto.conf` li corregge e attiva la persistenza, che e'
-la condizione perche' le sessioni dei subscriber sopravvivano al riavvio del
-broker. I commenti nel file spiegano ogni parametro.
-
-
-ma senza persistenza: le sessioni non sopravvivono al riavvio del container.
-
-## 4. Avviare il simulatore
-
-Con il broker attivo, da radice del repository:
-
-```bash
-source .venv/bin/activate && SIM_DURATION_SECONDS=120 python -m simulator.src.main
-```
-
-
-A fine run viene stampato il riepilogo dei contatori e viene scritto
-`ground_truth.csv`.
-
-### Osservare il traffico
-
-In un altro terminale, prima di far partire il simulatore:
-
-```bash
-# tutto
-mosquitto_sub -h localhost -t 'event/#' -v
-
-# solo i probe di un'area
-mosquitto_sub -h localhost -t 'event/probes/stage' -v
-
-# solo lo stato del simulatore (retained: arriva subito)
-mosquitto_sub -h localhost -t 'event/status/#' -v
-```
-
-Cosa ti aspetti di vedere: prima un messaggio di stato `online`, poi sei topic
-`evento/probes/<area>` che pubblicano con `batch_id` crescente e senza buchi.
-
-
-
-## 5. Topic
-
-| Topic | Chi pubblica | Contenuto |
-|---|---|---|
-| `event/probes/<area>` | simulatore | Batch di probe grezzi |
-| `event/analysis/<area>` | servizio di analisi | Stima, livello di affollamento, trend |
-| `event/alerts/<area>` | servizio di analisi | Superamento soglie |
-| `event/decisions` | orchestratore | Decisioni di placement motivate |
-| `event/status/<componente>` | tutti | Stato online/offline (retained + Last Will) |
-
-Il prefisso `event` e' un contratto fra quattro componenti che non si parlano
-direttamente: se lo cambi, va cambiato ovunque.
-
-Formato del batch di probe:
-
-```json
-{
-  "area_id": "stage",
-  "sensor_id": "ap-stage-01",
-  "batch_id": 1247,
-  "sent_at": "2026-08-03T14:09:13.591+00:00",
-  "count": 50,
-  "probes": [{"sensor_id": "...", "ts": "...", "mac": "...", "rssi": -67}]
-}
-```
-
-`sent_at` e' ora di parete UTC, non tempo simulato: serve al ricevente per
-misurare la latenza di trasporto contro il proprio orologio. `batch_id` e'
-progressivo **per area**, cosi' un buco nella sequenza rende quantificabile la
-perdita.
+The system ingests and processes continuous streams of synthetic radio frames (Wi-Fi/BLE probe sniffing), estimates pedestrian density using dedicated edge analysis microservices, dynamically orchestrates computational workload placement based on geospatial latency and CPU load, and issues ultra-low-latency emergency alerts via a **Dual-Path** communication paradigm.
 
 ---
 
-## Guida all'Avvio su Kubernetes (Minikube a 4 Nodi)
+## System Architecture and Components
 
-L'infrastruttura è progettata per essere eseguita in un ambiente distribuito. Puoi emulare questo comportamento in locale sfruttando Minikube configurato in modalità multi-nodo.
+The system architecture is deployed on a multi-node Kubernetes cluster (1 central Cloud node and 3 perimeter Edge nodes) and is structured into the following cooperating modules:
 
-### 1. Inizializzazione del Cluster
-Avvia Minikube richiedendo esplicitamente la creazione di 4 nodi virtuali:
+![Cluster Architecture](architetturaCluster.drawio.png)
+
+* **Crowd Simulator (`simulator/`)**: A Python module based on Markov chains parameterized by zone type. It models pedestrian movement and emits radio probe frames, broadcasting them concurrently to all MQTT brokers across the system.
+
+
+* **Distributed MQTT Brokers (`k8s/mosquitto.yaml`)**: A dedicated Eclipse Mosquitto instance hosted on each cluster node (both Cloud and Edge). It exposes TCP port `1883` for probe ingestion and intra-node pod communication, as well as WebSocket port `9001` for real-time push delivery to web clients.
+
+
+* **Edge Analysis Service (`eventAnalysis/`)**: A containerized Java/Spring Boot microservice. Dynamically instantiated with a dedicated pod for each defined geographic area, it processes probe streams over sliding windows and calculates crowd density and accumulation trends using linear regression.
+
+
+* **Management Backend and Geospatial Engine (`eventManagement/`)**: A Spring Boot application hosted on the Cloud node. It integrates PostgreSQL/PostGIS to persist spatial geometries (polygonal areas and node coordinates) and evaluate minimum geodetic distances via native queries.
+
+
+* **Context-Aware Orchestrator (`eventManagement/src/.../orchestration/`)**: A periodic control loop running within the backend that monitors cluster health, CPU utilization, and area priorities. It evaluates a multi-criteria cost function to automate analytical container placement and live migration via the Kubernetes API.
+
+
+* **Operator Dashboard (`event-frontend/`)**: A reactive frontend console built with React, TypeScript, and Leaflet. It enables interactive management of maps, areas, nodes, and scheduling policies while displaying real-time alerts and node operational metrics.
+
+
+
+### Dual-Path Communication Paradigm
+
+Data egress from peripheral analysis services is governed by two asymmetric, parallel communication routes tailored to message criticality[cite: 2]:
+
+* **Fast-Path (Reactive / Emergencies)**: When critical overcrowding or dangerous congestion trends are detected (e.g., three consecutive cycles of `HIGHLY_RISING`), the analysis pod immediately publishes the alert to the local Mosquitto broker on its host node. The notification is delivered directly to the frontend via WebSocket within a few milliseconds ($\sim 1\text{--}3\,\text{ms}$), completely bypassing cloud transit and database persistence.
+
+
+* **Slow-Path (Persistence / Historical Storage)**: At the close of each observation window, the pod sends an aggregated JSON summary via HTTP REST to the central backend for long-term storage in PostgreSQL/PostGIS and time-series modeling.
+
+
+
+---
+
+## System Prerequisites
+
+Ensure the following tools and runtimes are installed on the host machine prior to starting the system:
+
+* **Docker Engine** (v24.0+)
+* **Minikube** (v1.30+) and **kubectl**
+* **Java JDK 17+**
+* **Python 3.10+** with `venv` support
+* **Node.js** (v18+) and **npm**
+
+---
+
+## Step-by-Step Getting Started Guide
+
+### 1. Environment and Permissions Setup
+
+Grant execution permissions to all automation scripts across the repository[cite: 1]:
+
 ```bash
-minikube start --nodes 4
+chmod +x *.sh eventManagement/*.sh eventAnalysis/*.sh
 ```
-*(Puoi verificare lo stato dei nodi lanciando `kubectl get nodes`)*
 
-### 2. Configurazione dell'ambiente Docker
-Poiché abbiamo impostato l'`imagePullPolicy: Never` nei manifest, dobbiamo compilare le immagini Docker *direttamente* all'interno del demone Docker di Minikube, altrimenti i nodi non troveranno le immagini.
+Set up the virtual environment and install dependencies for the Python simulator[cite: 1]:
+
 ```bash
-eval $(minikube docker-env)
-```
-
-### 3. Build delle Immagini Locali
-Mantenendo attivo il terminale precedente, procedi con la compilazione e la build delle immagini per entrambi i microservizi:
-
-**Event Management (Backend & Orchestratore):**
-```bash
-cd eventManagement
-./gradlew bootJar
-docker build -t event-management:latest .
+cd simulator
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 cd ..
 ```
 
-**Event Analysis (Edge Worker):**
+Verify or configure the `.env` file in the project root containing settings for database connections, analysis thresholds, and MQTT endpoints[cite: 1].
+
+---
+
+### 2. Multi-Node Kubernetes Cluster Provisioning
+
+Execute the provisioning script using the `--pf` flag to automatically establish all required port-forwarding tunnels[cite: 1]:
+
 ```bash
-cd eventAnalysis
-./gradlew bootJar
-docker build -t event-analysis:latest .
-cd ..
+./start_cluster_pf.sh --pf
 ```
 
-### 4. Deploy dell'Infrastruttura di Base
-L'applicazione di Analisi verrà creata dinamicamente. Noi dobbiamo far partire unicamente il Database (PostGIS), il broker messaggi (Mosquitto) e l'orchestratore (Event Management):
+The script executes the following automated workflow[cite: 1]:
+
+* Starts a 4-node Minikube cluster using the `edge-cluster` profile[cite: 1].
+* Labels the cluster nodes (`node-cloud` with `tier=cloud`, and `node-edge-1`, `node-edge-2`, `node-edge-3` with `tier=edge`)[cite: 1].
+* Enables and patches the `metrics-server` with a 10-second sampling resolution for accurate CPU monitoring[cite: 1].
+* Pre-loads the `polinux/stress-ng` container image into the Minikube node cache to eliminate pull latency during testing[cite: 1].
+* Creates the `event-analysis-config` ConfigMap from `.env` and applies base manifests in `k8s/` (PostGIS, Mosquitto, ServiceAccount, RBAC, and Backend)[cite: 1].
+* Executes local container build and redeployment scripts for Java services (`eventManagement` and `eventAnalysis`)[cite: 1].
+* Opens background `kubectl port-forward` tunnels[cite: 1]:
+* Backend REST API: `http://localhost:8080`[cite: 1]
+* Cloud MQTT Broker: TCP port `1883`[cite: 1]
+* Edge MQTT Brokers (1, 2, 3): TCP ports `1884`, `1885`, `1886`[cite: 1]
+
+
+* Launches the Minikube dashboard in the background[cite: 1].
+
+---
+
+### 3. Geospatial Scenario Bootstrap
+
+In a new terminal window, initialize the event layout and geographic coordinates by running[cite: 1]:
+
 ```bash
-kubectl apply -f k8s/postgis.yaml
-kubectl apply -f k8s/mosquitto.yaml
-kubectl apply -f k8s/event-management.yaml
+./setup_scenario.sh
 ```
 
-Per far in modo che k8s legga il file .env:
+This script automates the following actions[cite: 1]:
+
+* Triggers synchronization of Kubernetes nodes into the PostGIS database via `/api/nodes/sync-k8s`[cite: 1].
+* Assigns physical GPS coordinates to Edge and Cloud nodes around Piazza Maggiore in Bologna[cite: 1].
+* Creates the target event record[cite: 1].
+* Registers 6 georeferenced areas modeled as PostGIS polygons (`entrata`, `corridoio`, `stage`, `stand`, `food`, `uscita`), each configured with capacity and priority attributes[cite: 1].
+* Automatically triggers the instantiation and scheduling of dedicated `event-analysis` pods on Kubernetes for each monitored area[cite: 1].
+
+---
+
+### 4. Operator Dashboard Launch (Frontend)
+
+Open a dedicated terminal, install dependencies, and launch the development server[cite: 1]:
+
 ```bash
-kubectl create configmap event-analysis-config --from-env-file=eventAnalysis/.env
+cd event-frontend
+npm install
+npm run dev
 ```
 
-### 5. Accesso e Test
-Una volta che i pod sono in stato `Running`, possiamo esporre le porte per testare il sistema dal nostro computer host:
+The dashboard will be accessible in your browser at `http://localhost:5173` (or the port reported in the terminal)[cite: 1].
 
-**Esponi l'API di backend:**
+> **Browser Permissions Note**: Upon first loading the application, grant permission for native browser notifications to receive real-time critical alerts emitted over the Fast-Path.
+> 
+> 
+
+---
+
+### 5. Running the Crowd Simulation
+
+In a separate terminal, launch the stochastic simulator to start synthetic radio frame generation and broadcast transmission[cite: 1]:
+
 ```bash
-minikube service event-management-svc
+./start_sim.sh
 ```
-*(Minikube aprirà automaticamente una pagina del browser o stamperà un URL del tipo `http://127.0.0.1:XXXXX` da cui potrai richiamare gli endpoint REST, ad es. su Postman)*
 
-**Esponi il Broker MQTT (per il simulatore):**
-Se il simulatore di sensori python gira sul tuo PC e non dentro K8s, necessita di parlare con Mosquitto. Usa il port-forwarding (sarà da cambiare con una configurazione più solida):
+The generator queries the registered areas, instantiates the synthetic pedestrian population, and broadcasts probe batches across all cluster MQTT brokers simultaneously. The dashboard will display live headcounts, density metrics, forecast charts, and dynamic area risk status updates.
+
+---
+
+## Resilience Testing and Chaos Engineering
+
+The platform supports dynamic fault-tolerance and overload-handling verification[cite: 2, 5]:
+
+### 1. CPU Overload Simulation (Overload Avoidance)
+
+You can inject a 95% synthetic CPU workload onto an Edge node directly via the infrastructure panel in the dashboard or by executing:
+
 ```bash
-kubectl port-forward svc/mosquitto-svc 1883:1883
+kubectl run cpu-stress --image=polinux/stress-ng --restart=Never \
+  --overrides='{"spec": {"nodeSelector": {"node-id": "node-edge-2"}}}' \
+  -- --cpu 0 --cpu-load 95 --timeout 180s
 ```
-Ora il simulatore potrà inviare i dati a `localhost:1883`.
 
-### (Utility) Aggiornare il codice
-Se modifichi il codice Java, ripeti il punto 3 per il servizio interessato e poi forza il riavvio del pod:
+* **Expected Behavior**: At the next control loop tick, the orchestrator detects that node CPU utilization exceeds the 75% threshold, assigns a heavy penalty to the congested node, and selectively evicts lower-priority pods toward idle edge nodes or the Cloud while keeping critical areas locally anchored[cite: 2, 5].
+
+### 2. Node Failure Simulation (Failover and Failback)
+
+By unscheduling and isolating an Edge node from cluster scheduling[cite: 2, 5]:
+
 ```bash
-kubectl delete pod -l app=event-management
-kubectl delete pod -l app=event-analysis
+kubectl cordon edge-cluster-m02
+```
+
+* **Expected Behavior**: The orchestrator detects the unschedulable state, assigns an infinite cost to the active allocation, and executes an immediate failover bypassing hysteresis[cite: 2, 5]. Once the node is uncordoned (`kubectl uncordon edge-cluster-m02`), the cost function re-evaluates the configuration and authorizes a controlled return (failback) only if the net cost reduction exceeds the hysteresis threshold[cite: 2, 5].
+
+---
+
+## Maintenance and System Teardown
+
+### Live Configuration Reload
+
+If configuration parameters in `.env` are updated (e.g., trend angles, database credentials), apply changes to the ConfigMap and reload deployments without restarting Minikube[cite: 1]:
+
+```bash
+./update_env.sh
+```
+
+### Stopping the Infrastructure
+
+To cleanly terminate background processes (port-forwarding, simulator, dashboard), purge analysis pods, and stop the Minikube cluster[cite: 1]:
+
+```bash
+./stop_all.sh
+```
+
+---
+
+## Repository Structure
+
+```text
+.
+├── docker-compose.yaml        # Local auxiliary configurations
+├── setup_scenario.sh          # Bootstrap script for nodes, event, and areas in PostGIS
+├── start_cluster_pf.sh        # Starts Minikube cluster, tunes metrics, deploys, and sets up port-forwarding
+├── start_cluster.sh           # Alternative basic cluster startup script
+├── start_sim.sh               # Startup script for Python crowd traffic simulator
+├── stop_all.sh                # Complete system teardown and cleanup procedure
+├── update_env.sh              # Live propagation of .env variables to Kubernetes deployments
+├── deploy/                    # Static configuration files for Mosquitto brokers
+├── k8s/                       # Kubernetes manifests for PostGIS, Mosquitto, RBAC, and Backend
+│   └── patches/               # Tuning patch for metrics-server (10-second sampling resolution)
+├── eventManagement/           # Spring Boot Backend (REST, PostGIS, Orchestrator Control Loop)
+├── eventAnalysis/             # Java Spring Boot microservice for perimeter area analysis
+├── event-frontend/            # Operator dashboard built with React, TypeScript, Leaflet, and WebSockets
+└── simulator/                 # Stochastic crowd mobility simulator based on Markov chains
 ```

@@ -1,7 +1,6 @@
 package it.unibo.cas.eventmanagement.services;
 
 import it.unibo.cas.eventmanagement.models.DTOs.EventDTO;
-import it.unibo.cas.eventmanagement.models.entities.Area;
 import it.unibo.cas.eventmanagement.models.entities.Event;
 import it.unibo.cas.eventmanagement.orchestration.KubernetesOrchestrationService;
 import it.unibo.cas.eventmanagement.repositories.EventRepository;
@@ -9,7 +8,6 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 
 @Service
 public class EventService {
