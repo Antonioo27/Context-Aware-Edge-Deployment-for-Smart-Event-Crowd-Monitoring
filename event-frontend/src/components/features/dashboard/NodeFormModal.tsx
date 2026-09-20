@@ -41,7 +41,7 @@ const NodeFormModal: React.FC<Props> = ({ latitude, longitude, nodes, onSave, on
    *
    * @param e Standard React form submission event.
    */
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.SubmitEvent) => {
     e.preventDefault();
     if (!selectedNode) return;
 

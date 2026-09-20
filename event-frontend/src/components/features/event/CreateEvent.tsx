@@ -44,7 +44,7 @@ const CreateEvent: React.FC<Props> = ({ onEventCreated, onSkipToDashboard }) => 
    *
    * @param e Standard React form submission event.
    */
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);

@@ -31,7 +31,7 @@ const AreaFormModal: React.FC<Props> = ({ coordinates, onSave, onCancel }) => {
    *
    * @param e Standard React form submission event.
    */
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.SubmitEvent) => {
     e.preventDefault();
     onSave({
       name,
